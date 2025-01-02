@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import  { useState, useEffect } from "react";
 import { Calendar, Star, TrendingUp, BarChart2, PlusCircle, MapPin, DollarSign } from "lucide-react";
 
 const OrganizerDashboard = () => {

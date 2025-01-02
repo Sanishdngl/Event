@@ -20,6 +20,12 @@ const AdminDashboard = () => {
   const sidebarClass = isDarkMode ? 'bg-gray-800' : 'bg-white';
   const componentClass = isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('role');
+    window.location.href = '/loginsignup';
+  };
+
   return (
     <div className={`min-h-screen ${themeClass} transition-colors duration-300`}>
       {/* Sidebar */}
@@ -80,7 +86,9 @@ const AdminDashboard = () => {
               <HelpCircle className="w-5 h-5" />
               <span className="ml-3">Help Center</span>
             </button>
-            <button className="flex items-center w-full px-4 py-3 rounded-xl hover:bg-gray-700/30 transition-colors text-red-400">
+            <button 
+            onClick={handleLogout}
+            className="flex items-center w-full px-4 py-3 rounded-xl hover:bg-gray-700/30 transition-colors text-red-400">
               <LogOut className="w-5 h-5" />
               <span className="ml-3">Logout</span>
             </button>
