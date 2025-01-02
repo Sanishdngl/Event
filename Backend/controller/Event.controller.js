@@ -81,23 +81,29 @@ export const getEvents = async (req, res) => {
 // Get a single event by ID
 export const getEventById = async (req, res) => {
   try {
+    // Find the event by ID and populate org_ID and attendees
     const event = await Event.findById(req.params.id)
-      .populate("org_ID", "username email")  // Changed from host_ID to org_ID
-      .populate("attendees", "username email");  // Added attendees population
+      .populate("org_ID", "username email")  // Ensure org_ID refers to the correct model (e.g., User)
+      .populate("attendees", "username email");  // Ensure attendees is correctly populated
 
+    // If no event is found, return 404
     if (!event) {
       return res.status(404).json({ message: "Event not found" });
     }
 
+    // If event is found, return the event data
     res.status(200).json(event);
   } catch (error) {
     console.error(error);
+    // Send a detailed error message
     res.status(500).json({ 
       message: "Error fetching event", 
       error: error.message 
     });
   }
 };
+
+
 
 export const getEventByIdName = async (req, res) => {
   try {

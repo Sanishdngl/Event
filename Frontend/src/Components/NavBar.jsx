@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import  { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import eventA from "../assets/images/eventA.png";
+import {jwtDecode} from "jwt-decode";
 import { 
-  Search, Bell, User, LogOut, Settings, ChevronDown,
+   Bell, User, LogOut, Settings, ChevronDown,
   Sun, Moon, Plus, Menu, Home, Calendar, Phone, Info
 } from 'lucide-react';
 
@@ -10,11 +11,22 @@ const NavBar = () => {
   const [sticky, setSticky] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [user, setUser] = useState(null); // State to store user info
   const location = useLocation();
-  
+
   const isAuthenticated = localStorage.getItem('token');
   const userRole = localStorage.getItem('role');
-
+  
+  useEffect(() => {
+    if (isAuthenticated) {
+      try {
+        const decodedToken = jwtDecode(isAuthenticated);
+        setUser(decodedToken.user); // Save user info in state
+      } catch (error) {
+        console.error("Invalid token:", error);
+      }
+    }
+  }, [isAuthenticated]);
   const themeClasses = {
     nav: `fixed w-full top-0 z-50 transition-all duration-300 ${
       sticky 
@@ -148,8 +160,8 @@ const NavBar = () => {
                   {isProfileOpen && (
                     <div className={`absolute right-0 mt-2 w-56 rounded-xl ${themeClasses.card} shadow-lg border overflow-hidden`}>
                       <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-                        <p className={`text-sm font-medium ${themeClasses.text}`}>John Doe</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">john@example.com</p>
+                        <p className={`text-sm font-medium ${themeClasses.text}`}>{isAuthenticated ? user.fullname: ""}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{isAuthenticated ? user.email: ""}</p>
                       </div>
                       <div className="p-2">
                         <Link 
