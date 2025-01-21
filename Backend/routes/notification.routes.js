@@ -2,24 +2,35 @@
 import express from 'express';
 import { authenticateUser } from '../middleware/authMiddleware.js';
 import { protectAdmin } from '../middleware/adminMiddleware.js';
-import { requestEventNotification, approveEventNotification, getUserNotifications, getAdminNotifications,markAsRead } from '../controller/notification.controller.js';
+import {
+  requestEventNotification,
+  approveEventNotification,
+  getUserNotifications,
+  getAdminNotifications,
+  markAsRead,
+  markAllAsRead,
+  getUnreadCount,
+  deleteNotification
+} from '../controller/notification.controller.js';
 
 const router = express.Router();
 
-// Route to send event creation request notification to admin
-router.post('/request-event', authenticateUser, requestEventNotification);
+// Base route: /api/notifications
 
-// Route to send approval notification to organizer
-router.post('/approve-event/:eventId', authenticateUser, protectAdmin, approveEventNotification);
+// GET routes
+router.get('/', authenticateUser, getUserNotifications);
+router.get('/count', authenticateUser, getUnreadCount);
+router.get('/admin', [authenticateUser, protectAdmin], getAdminNotifications);  // Combined middleware
 
+// POST routes
+router.post('/events', authenticateUser, requestEventNotification);
+router.post('/events/:eventId/approve', [authenticateUser, protectAdmin], approveEventNotification);  // Changed from /status to /approve for clarity
 
-router.get('/admin-notifications', protectAdmin, getAdminNotifications);
-router.patch('/mark-read/:notificationId', markAsRead);
+// PATCH routes
+router.patch('/:id/read', authenticateUser, markAsRead);              // Added /read for clearer route purpose
+router.patch('/read-all', authenticateUser, markAllAsRead);          // Changed from / to /read-all for explicit naming
 
-// Route to fetch notifications for a user (Admin/Organizer)
-router.get('/notify',authenticateUser, getUserNotifications);
-
-
-
+// DELETE routes
+router.delete('/:id', authenticateUser, deleteNotification);
 
 export default router;

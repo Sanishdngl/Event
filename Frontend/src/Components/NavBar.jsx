@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import eventA from "../assets/images/eventA.png";
 import { useTheme } from '../context/ThemeContext';
 import { useSidebar } from '../context/SidebarContext';
+import NotificationDropdown from './NotificationDropdown';
+import { useNotifications } from '../context/NotificationContext';
 import { jwtDecode } from "jwt-decode";
 import { 
   Bell, User, LogOut, Settings, 
@@ -13,12 +15,12 @@ import {
 const NavBar = () => {
   const [sticky, setSticky] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [user, setUser] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { isDarkMode, setIsDarkMode } = useTheme(); 
-  const { isSidebarOpen } = useSidebar(); 
+  const { isSidebarOpen } = useSidebar();
+  const { toggleNotifications, unreadCount } = useNotifications();
   
   const isAuthenticated = localStorage.getItem('token');
   const userRole = localStorage.getItem('role');
@@ -36,12 +38,6 @@ const NavBar = () => {
       isDarkMode ? 'bg-gray-900' : 'bg-white'
     } shadow-lg border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} overflow-hidden`
   };
-
-  const notifications = [
-    { id: 1, message: "New event registration", time: "2 mins ago" },
-    { id: 2, message: "Payment received", time: "1 hour ago" },
-    { id: 3, message: "Event reminder", time: "2 hours ago" },
-  ];
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -65,13 +61,10 @@ const NavBar = () => {
       if (isProfileOpen && !event.target.closest('.profile-dropdown')) {
         setIsProfileOpen(false);
       }
-      if (showNotifications && !event.target.closest('.notifications-dropdown')) {
-        setShowNotifications(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isProfileOpen, showNotifications]);
+  }, [isProfileOpen]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -128,39 +121,19 @@ const NavBar = () => {
 
               <div className="relative notifications-dropdown">
                 <button
-                  onClick={() => {
-                    setShowNotifications(!showNotifications);
-
-                  }}
+                  onClick={toggleNotifications}
                   className={`p-2 hover:bg-gray-100 rounded-full relative ${
                     isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
                   }`}
                 >
                   <Bell className={`w-6 h-6 ${themeClasses.text}`} />
-                  <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                    3
-                  </span>
+                  {unreadCount > 0 && (
+                    <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
                 </button>
-                
-                {showNotifications && (
-                  <div className={themeClasses.dropdownMenu}>
-                    {notifications.map((notification) => (
-                      <div 
-                        key={notification.id} 
-                        className={`px-4 py-2 ${
-                          isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <p className={`text-sm ${themeClasses.text}`}>
-                          {notification.message}
-                        </p>
-                        <p className={`text-xs ${themeClasses.textMuted}`}>
-                          {notification.time}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <NotificationDropdown isDarkMode={isDarkMode} />
               </div>
             </div>
           </div>
@@ -229,39 +202,19 @@ const NavBar = () => {
 
                 <div className="relative notifications-dropdown">
                   <button
-                    onClick={() => {
-                      setShowNotifications(!showNotifications);
-                      setIsProfileOpen(false);
-                    }}
+                    onClick={toggleNotifications}
                     className={`p-2 hover:bg-gray-100 rounded-full relative ${
                       isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-100'
                     }`}
                   >
                     <Bell className={`w-6 h-6 ${themeClasses.text}`} />
-                    <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                      3
-                    </span>
+                    {unreadCount > 0 && (
+                      <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                        {unreadCount}
+                      </span>
+                    )}
                   </button>
-                  
-                  {showNotifications && (
-                    <div className={themeClasses.dropdownMenu}>
-                      {notifications.map((notification) => (
-                        <div 
-                          key={notification.id} 
-                          className={`px-4 py-2 ${
-                            isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'
-                          }`}
-                        >
-                          <p className={`text-sm ${themeClasses.text}`}>
-                            {notification.message}
-                          </p>
-                          <p className={`text-xs ${themeClasses.textMuted}`}>
-                            {notification.time}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <NotificationDropdown isDarkMode={isDarkMode} />
                 </div>
 
                 <div className="relative profile-dropdown">
@@ -285,7 +238,7 @@ const NavBar = () => {
                           {user?.fullname || 'User'}
                         </p>
                         <p className={`text-sm ${themeClasses.textMuted}`}>
-                        {user?.email || 'user@example.com'}
+                          {user?.email || 'user@example.com'}
                         </p>
                       </div>
                       <div className="p-2">

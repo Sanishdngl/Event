@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import mongoose from 'mongoose';
 import http from 'http';
-import { Server as socketIo } from 'socket.io';
+import { wsManager } from './webSocket.js';
 import cors from 'cors';
 import seedRoles from './seeders/roleSeeder.js';
 import seedPermissions from './seeders/PermissionSeeder.js';
@@ -10,6 +10,7 @@ import seedUsers from './seeders/userSeeder.js';
 import seedEvents from './seeders/eventSeeder.js';
 import seedCategories from './seeders/categorieSeeder.js';
 import seedRolePermissions from './seeders/rolePermissionSeeder.js';
+import seedNotifications from './seeders/notificationSeeder.js';
 import eventRoutes from './routes/Event.routes.js';
 import userRoute from './routes/user.route.js';
 import roleRoute from './routes/role.route.js';
@@ -26,6 +27,9 @@ const app = express();
 // Create HTTP server
 const server = http.createServer(app);
 
+// Initialize WebSocket server
+wsManager.initialize(server);
+
 // Define CORS options with more detailed configuration
 const corsOptions = {
   origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'],
@@ -35,13 +39,6 @@ const corsOptions = {
   preflightContinue: false,
   optionsSuccessStatus: 204
 };
-
-// Initialize Socket.IO with CORS configuration
-const io = new socketIo(server, {
-  cors: corsOptions
-});
-
-export { io };
 
 // Validate environment variables
 if (!process.env.MongoDB_URI) {
@@ -54,8 +51,6 @@ const URI = process.env.MongoDB_URI;
 
 // Middlewares
 app.use(express.json());
-
-// Apply CORS middleware globally
 app.use(cors(corsOptions));
 
 // Add CORS headers middleware for additional control
@@ -79,9 +74,7 @@ const connectDB = async () => {
   try {
     await mongoose.connect(URI);
     console.log("Connected to MongoDB");
-    // Add clear indication of seeding process
     console.log("Starting database seeding...");
-    // Execute seeds in proper order with status logging
     console.log("1. Seeding roles...");
     await seedRoles();
     console.log("2. Seeding permissions...");
@@ -94,25 +87,72 @@ const connectDB = async () => {
     await seedEvents();
     console.log("6. Seeding role permissions...");
     await seedRolePermissions();
-    console.log("✓ Database seeding completed!");
+    console.log("7. Seeding notification permissions...");
+    await seedNotifications();
   } catch (error) {
     console.error("Error connecting to MongoDB:", error.message);
     process.exit(1);
   }
 };
 
-// Graceful shutdown
-const gracefulShutdown = () => {
-  console.log("\nShutting down gracefully...");
-  mongoose.connection.close(() => {
-    console.log("MongoDB connection closed.");
-    process.exit(0);
-  });
-};
+// Updated graceful shutdown handler
+async function gracefulShutdown(signal) {
+  console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+  
+  try {
+    // Close WebSocket connections if any
+    if (wsManager) {
+      console.log('Closing WebSocket connections...');
+      await wsManager.shutdown();
+    }
 
-// Handle process termination
-process.on('SIGINT', gracefulShutdown);
-process.on('SIGTERM', gracefulShutdown);
+    // Close HTTP server
+    await new Promise((resolve, reject) => {
+      server.close((err) => {
+        if (err) {
+          reject(err);
+        } else {
+          console.log('HTTP server closed.');
+          resolve();
+        }
+      });
+    });
+
+    // Close MongoDB connection
+    await mongoose.connection.close();
+    console.log('MongoDB connection closed.');
+
+    // Exit process
+    console.log('Shutdown completed.');
+    process.exit(0);
+  } catch (error) {
+    console.error('Error during shutdown:', error);
+    process.exit(1);
+  }
+}
+
+// Register shutdown handlers
+['SIGTERM', 'SIGINT', 'SIGUSR2'].forEach(signal => {
+  process.on(signal, () => gracefulShutdown(signal));
+});
+
+// Handle nodemon restarts
+process.once('SIGUSR2', async () => {
+  await gracefulShutdown('SIGUSR2');
+  process.kill(process.pid, 'SIGUSR2');
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', async (error) => {
+  console.error('Uncaught Exception:', error);
+  await gracefulShutdown('uncaughtException');
+});
+
+// Handle unhandled rejections
+process.on('unhandledRejection', async (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  await gracefulShutdown('unhandledRejection');
+});
 
 // Initialize database connection
 connectDB();
@@ -129,7 +169,6 @@ app.use('/api/v1/admin', adminRoutes);
 app.use((err, req, res, next) => {
   console.error('Error:', err);
   
-  // Handle CORS errors specifically
   if (err.message.includes('CORS')) {
     return res.status(500).json({
       success: false,
@@ -138,7 +177,6 @@ app.use((err, req, res, next) => {
     });
   }
   
-  // Handle other errors
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal server error',
@@ -149,20 +187,6 @@ app.use((err, req, res, next) => {
 // Health check
 app.get('/', (req, res) => {
   res.send('API is running...');
-});
-
-// Socket.IO connection handling
-io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
-
-  // Listen for notification creation from the backend and emit to clients
-  socket.on('send-notification', (notification) => {
-    io.emit('new-notification', notification);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-  });
 });
 
 // Start the server using the HTTP server instance

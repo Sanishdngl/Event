@@ -85,6 +85,7 @@ api.interceptors.request.use(
 );
 
 // Add response interceptor for error handling
+// api.js interceptor
 api.interceptors.response.use(
     async (response) => {
         try {
@@ -101,9 +102,19 @@ api.interceptors.response.use(
     },
     async (error) => {
         if (error.response) {
-            // Handle HTML responses
             const contentType = error.response.headers?.['content-type'] || '';
+            
+            // Handle HTML responses
             if (contentType.includes('text/html')) {
+                // For GET requests returning 404, return empty data instead of throwing
+                if (error.config.method === 'get' && error.response.status === 404) {
+                    return {
+                        data: [],
+                        status: 200,
+                        headers: error.response.headers
+                    };
+                }
+                
                 console.error('Received HTML error response:', error.response.data);
                 throw new ApiError(
                     'Server returned HTML instead of JSON',
@@ -115,7 +126,8 @@ api.interceptors.response.use(
             // Handle token expiration
             if (error.response.status === 401) {
                 localStorage.removeItem('token');
-                window.location.href = '/login';
+                localStorage.removeItem('role'); // Also remove role if you're storing it
+                window.location.href = '/loginsignup'; // Updated to match your login route
             }
 
             // Handle other API errors
@@ -167,5 +179,6 @@ export default {
     safeGet: (url, config) => makeApiCall('get', url, null, config),
     safePost: (url, data, config) => makeApiCall('post', url, data, config),
     safePut: (url, data, config) => makeApiCall('put', url, data, config),
+    safePatch: (url, data, config) => makeApiCall('patch', url, data, config),
     safeDelete: (url, config) => makeApiCall('delete', url, null, config)
 };

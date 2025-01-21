@@ -6,7 +6,13 @@ export const getDecodedToken = () => {
   const token = getToken();
   if (token) {
     try {
-      return JSON.parse(atob(token.split('.')[1]));
+      const decoded = JSON.parse(atob(token.split('.')[1]));
+      // Ensure user ID is present
+      if (!decoded.userId && !decoded.sub) {
+        console.error('Token missing user ID');
+        return null;
+      }
+      return decoded;
     } catch (error) {
       console.error('Error decoding token:', error);
       return null;

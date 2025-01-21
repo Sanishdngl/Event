@@ -1,150 +1,299 @@
 // controllers/notification.controller.js
-import  Notification  from '../model/notification.schema.js';
+import Notification from '../model/notification.schema.js';
 import Event from '../model/event.schema.js';
 import User from '../model/user.schema.js';
+import { wsManager } from '../webSocket.js';
 
-// Handle organizer request for event creation notification
+const createResponse = (success, message, data = null, error = null) => ({
+  success,
+  message,
+  data,
+  error
+});
+
+export const getUserNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const filter = req.query.filter || 'all';
+    
+    const skip = (page - 1) * limit;
+    
+    // Use aggregation to lookup user's role
+    const user = await User.findById(userId).populate('role', 'name');
+    if (!user) {
+      return res.status(404).json(createResponse(false, 'User not found'));
+    }
+    
+    let query = {
+      $or: [
+        { userId: userId },
+        { forRole: user.role.name } // Use the role name from populated role document
+      ]
+    };
+    
+    // Apply filters
+    switch(filter) {
+      case 'unread':
+        query.read = false;
+        break;
+      case 'event':
+        query.type = { $in: ['event_request', 'event_response', 'event_update'] };
+        break;
+      case 'system':
+        query.type = 'system_notification';
+        break;
+      case 'profile':
+        query.type = 'profile_update';
+        break;
+    }
+    
+    const [notifications, total] = await Promise.all([
+      Notification.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Notification.countDocuments(query)
+    ]);
+    
+    const responseData = {
+      notifications,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalNotifications: total,
+        limit
+      }
+    };
+
+    res.status(200).json(createResponse(true, 'Notifications retrieved successfully', responseData));
+  } catch (error) {
+    res.status(500).json(createResponse(false, 'Error fetching notifications', null, error.message));
+  }
+};
+
 export const requestEventNotification = async (req, res) => {
   try {
     const { eventId } = req.body;
+    const session = await Notification.startSession();
+    
+    await session.withTransaction(async () => {
+      const event = await Event.findById(eventId)
+        .populate({
+          path: 'org_ID',
+          select: 'username fullname',
+          populate: { path: 'role', select: 'name' }
+        })
+        .session(session);
+        
+      if (!event) {
+        throw new Error('Event not found');
+      }
 
-    // Fetch the event data and populate organizer details
-    const event = await Event.findById(eventId).populate('org_ID', 'username');
-    if (!event) {
-      return res.status(404).json({ message: 'Event not found' });
-    }
+      // Find users with Admin role
+      const adminRole = await Role.findOne({ name: 'Admin' });
+      if (!adminRole) {
+        throw new Error('Admin role not found');
+      }
 
-    // Create notification for the Admin
-    const notificationMessage = `Organizer ${event.org_ID.username} has created an event "${event.event_name}" and is awaiting approval.`;
-    const notification = new Notification({
-      message: notificationMessage,
-      type: 'event_request',
-      forRole: 'Admin',
-      userId: event.org_ID._id,
+      const notification = await Notification.create([{
+        message: `Organizer ${event.org_ID.fullname} has created an event "${event.event_name}" and is awaiting approval.`,
+        type: 'event_request',
+        forRole: 'Admin',
+        userId: event.org_ID._id,
+        eventId: event._id,
+        status: 'unread'
+      }], { session });
+
+      // Broadcast to admin users
+      wsManager.broadcastToRole('Admin', {
+        type: 'new_notification',
+        notification: notification[0]
+      });
+
+      res.status(201).json(createResponse(true, 'Notification created successfully', { notification: notification[0] }));
     });
 
-    await notification.save();
-    res.status(201).json({ message: 'Notification created successfully', notification });
+    await session.endSession();
   } catch (error) {
-    console.error('Error creating notification:', error);
-    res.status(500).json({ message: 'Error creating notification', error: error.message });
+    res.status(500).json(createResponse(false, 'Error creating notification', null, error.message));
   }
 };
+
 export const approveEventNotification = async (req, res) => {
-    const { eventId } = req.params; // Get the event ID from the request parameters
-    const { status } = req.body;  // Get the status (either 'Approved' or 'Rejected') from the request body
+  const { eventId } = req.params;
+  const { status } = req.body;
+  
+  try {
+    // Convert status to lowercase to match event schema enum
+    const normalizedStatus = status.toLowerCase();
+    if (normalizedStatus !== 'approved' && normalizedStatus !== 'rejected') {
+      return res.status(400).json(createResponse(false, "Invalid status, must be 'Approved' or 'Rejected'"));
+    }
+
+    const event = await Event.findByIdAndUpdate(
+      eventId,
+      { status: normalizedStatus },
+      { new: true }
+    ).populate('org_ID');
     
-    try {
-      // Check if the status is valid ('Approved' or 'Rejected')
-      if (status !== 'Approved' && status !== 'Rejected') {
-        return res.status(400).json({ message: "Invalid status, must be 'Approved' or 'Rejected'" });
-      }
-  
-      // Fetch the event by its ID
-      const event = await Event.findByIdAndUpdate(
-        eventId,
-        { status },
-        { new: true }
-      );
-      if (!event) {
-        return res.status(404).json({ message: "Event not found" });
-      }
-  
-      // Fetch the organizer of the event
-      const organizer = await User.findById(event.org_ID);
-      if (!organizer) {
-        return res.status(404).json({ message: "Organizer not found" });
-      }
-  
-      // Construct the notification message based on the event status
-      const notificationMessage = status === 'Approved'
-        ? `Admin has approved your event request.`
-        : `Admin has rejected your event request.`;
-  
-      // Create the notification for the organizer
-      const notification = new Notification({
-        message: notificationMessage,
-        type: 'event_response',  // Specify the type of the notification
-        forRole: 'Organizer',    // Send to the 'Organizer' role
-        userId: organizer._id,   // The organizer's user ID
-        status: 'unread',        // The notification is unread initially
-      });
-  
-      await notification.save();
-  
-      // Optionally, you can also create a confirmation notification for the admin if required
-      // const adminNotification = new Notification({
-      //   message: `You have ${status.toLowerCase()} an event request.`,
-      //   type: 'event_response',
-      //   forRole: 'Admin',
-      //   status: 'unread',  // Admin's notification status
-      // });
-  
-      // await adminNotification.save();
-  
-      res.status(200).json({ message: `Notification sent to organizer about event ${status.toLowerCase()}.` });
-    } catch (error) {
-      console.error('Error sending event status notification:', error);
-      res.status(500).json({ message: 'Error sending event status notification.' });
+    if (!event) {
+      return res.status(404).json(createResponse(false, 'Event not found'));
     }
-  };
 
-  // controllers/notification.controller.js
-export const getUserNotifications = async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const notifications = await Notification.find({ userId: userId })
-        .sort({ createdAt: -1 });
-  
-      res.status(200).json(notifications);
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching notifications.' });
+    const organizer = await User.findById(event.org_ID).populate('role', 'name');
+    if (!organizer) {
+      return res.status(404).json(createResponse(false, 'Organizer not found'));
     }
-  };
 
+    const notification = await Notification.create({
+      message: `Your event "${event.event_name}" has been ${normalizedStatus}.`,
+      type: 'event_response',
+      forRole: organizer.role.name,
+      userId: organizer._id,
+      eventId: event._id,
+      status: 'unread',
+    });
 
-  export const getAdminNotifications = async (req, res) => {
-    try {
-      const notifications = await Notification.find({ forRole: 'Admin' ,type:'event_request'})
-        .sort({ createdAt: -1 }); // Fetch notifications for Admin and sort by newest
-  
-      if (!notifications.length) {
-        return res.status(404).json({ message: 'No notifications found.' });
-      }
-  
-      res.status(200).json(notifications); // Return the notifications
-    } catch (error) {
-      console.error('Error fetching notifications:', error.message);
-      res.status(500).json({ message: 'Error fetching notifications.' });
-    }
-  };
+    wsManager.broadcastToUser(organizer._id, {
+      type: 'new_notification',
+      notification
+    });
 
-  // notification.controller.js
-
-
-
-// Controller to mark notification as read
-export const markAsRead = async (req, res) => {
-  const { notificationId } = req.params;
-
-  if (!notificationId || notificationId === 'undefined') {
-    return res.status(400).json({ message: 'Invalid Notification ID' });
+    res.status(200).json(createResponse(true, `Event ${normalizedStatus} successfully`, { notification }));
+  } catch (error) {
+    res.status(500).json(createResponse(false, 'Error processing event status', null, error.message));
   }
+};
+
+export const markAsRead = async (req, res) => {
+  const { id } = req.params;
 
   try {
     const notification = await Notification.findByIdAndUpdate(
-      notificationId,
+      id,
       { read: true },
       { new: true }
     );
 
     if (!notification) {
-      return res.status(404).json({ message: 'Notification not found' });
+      return res.status(404).json(createResponse(false, 'Notification not found'));
     }
 
-    res.status(200).json({ message: 'Notification marked as read', notification });
-  } catch (err) {
-    console.error('Error marking notification as read:', err);
-    res.status(500).json({ message: 'Internal server error' });
+    // Broadcast read status via WebSocket
+    wsManager.broadcastToUser(req.user._id, {
+      type: 'notification_read',
+      notificationId: id
+    });
+
+    res.status(200).json(createResponse(true, 'Notification marked as read', { notification }));
+  } catch (error) {
+    res.status(500).json(createResponse(false, 'Error marking notification as read', null, error.message));
+  }
+};
+
+export const markAllAsRead = async (req, res) => {
+  try {
+    const result = await Notification.updateMany(
+      {
+        $or: [
+          { userId: req.user._id },
+          { forRole: req.user.role }
+        ],
+        read: false
+      },
+      { read: true }
+    );
+    
+    // Broadcast all read via WebSocket
+    wsManager.broadcastToUser(req.user._id, {
+      type: 'all_notifications_read'
+    });
+    
+    res.status(200).json(createResponse(true, 'All notifications marked as read', { modifiedCount: result.modifiedCount }));
+  } catch (error) {
+    res.status(500).json(createResponse(false, 'Error marking all notifications as read', null, error.message));
+  }
+};
+
+export const deleteNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const notification = await Notification.findOneAndDelete({
+      _id: id,
+      $or: [
+        { userId: req.user._id },
+        { forRole: req.user.role }
+      ]
+    });
+
+    if (!notification) {
+      return res.status(404).json(createResponse(false, 'Notification not found or unauthorized'));
+    }
+
+    // Broadcast deletion via WebSocket
+    wsManager.broadcastToUser(req.user._id, {
+      type: 'notification_deleted',
+      notificationId: id
+    });
+
+    res.status(200).json(createResponse(true, 'Notification deleted successfully'));
+  } catch (error) {
+    res.status(500).json(createResponse(false, 'Error deleting notification', null, error.message));
+  }
+};
+
+// Get admin notifications
+export const getAdminNotifications = async (req, res) => {
+  try {
+    const notifications = await Notification.find({ 
+      forRole: 'Admin', 
+      type: 'event_request' 
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+    // Send initial data through HTTP
+    res.status(200).json(createResponse(
+      true, 
+      notifications.length ? 'Admin notifications retrieved' : 'No notifications found',
+      { notifications }
+    ));
+
+    // Set up WebSocket subscription for real-time updates
+    if (req.user.role === 'Admin') {
+      wsManager.broadcastToUser(req.user._id, {
+        type: 'admin_notifications_subscription',
+        notifications
+      });
+    }
+  } catch (error) {
+    res.status(500).json(createResponse(false, 'Error fetching admin notifications', null, error.message));
+  }
+};
+
+// Get unread count
+export const getUnreadCount = async (req, res) => {
+  try {
+    const count = await Notification.countDocuments({
+      $or: [
+        { userId: req.user._id },
+        { forRole: req.user.role }
+      ],
+      read: false
+    });
+    
+    // Send initial count through HTTP
+    res.status(200).json(createResponse(true, 'Unread count retrieved', { count }));
+
+    // Set up WebSocket subscription for real-time count updates
+    wsManager.broadcastToUser(req.user._id, {
+      type: 'unread_count_subscription',
+      count
+    });
+  } catch (error) {
+    res.status(500).json(createResponse(false, 'Error getting unread count', null, error.message));
   }
 };
