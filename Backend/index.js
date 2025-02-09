@@ -4,40 +4,41 @@ import mongoose from 'mongoose';
 import http from 'http';
 import { wsManager } from './webSocket.js';
 import cors from 'cors';
+import fileUpload from 'express-fileupload';
+import path from 'path';
+import crypto from 'crypto';
+
 import seedRoles from './seeders/roleSeeder.js';
 import seedPermissions from './seeders/PermissionSeeder.js';
 import seedUsers from './seeders/userSeeder.js';
 import seedEvents from './seeders/eventSeeder.js';
 import seedCategories from './seeders/categorieSeeder.js';
 import seedRolePermissions from './seeders/rolePermissionSeeder.js';
-import seedNotifications from './seeders/notificationSeeder.js';
+
 import eventRoutes from './routes/Event.routes.js';
 import userRoute from './routes/user.route.js';
+import bookingRoutes from './routes/booking.routes.js';
 import roleRoute from './routes/role.route.js';
 import adminRoutes from './routes/admin.routes.js';
 import categoriesRoutes from './routes/categories.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import eventRequestRoutes from './routes/eventrequest.routes.js';
 
-// Load environment variables first
+
 dotenv.config();
-
-// Initialize express app
 const app = express();
-
-// Create HTTP server
 const server = http.createServer(app);
-
-// Initialize WebSocket server
 wsManager.initialize(server);
 
-// Define CORS options with more detailed configuration
 const corsOptions = {
   origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
   credentials: true,
   preflightContinue: false,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 204,
+  maxAge: 3600
 };
 
 // Validate environment variables
@@ -49,25 +50,10 @@ if (!process.env.MongoDB_URI) {
 const PORT = process.env.PORT || 5000;
 const URI = process.env.MongoDB_URI;
 
-// Middlewares
 app.use(express.json());
 app.use(cors(corsOptions));
-
-// Add CORS headers middleware for additional control
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (corsOptions.origin.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
-  }
-  next();
-});
+app.options('*', cors(corsOptions));
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Connect to MongoDB
 const connectDB = async () => {
@@ -87,8 +73,6 @@ const connectDB = async () => {
     await seedEvents();
     console.log("6. Seeding role permissions...");
     await seedRolePermissions();
-    console.log("7. Seeding notification permissions...");
-    await seedNotifications();
   } catch (error) {
     console.error("Error connecting to MongoDB:", error.message);
     process.exit(1);
@@ -157,13 +141,22 @@ process.on('unhandledRejection', async (reason, promise) => {
 // Initialize database connection
 connectDB();
 
+app.use(fileUpload({
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  createParentPath: true,
+  abortOnLimit: true,
+  responseOnLimit: 'File size too large'
+}));
+
 // API routes
 app.use('/api/v1/events', eventRoutes);
 app.use('/api/v1/users', userRoute);
+app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/roles', roleRoute);
 app.use("/api/v1/categories", categoriesRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/eventrequest', eventRequestRoutes);
 
 // Global error handler with improved CORS error handling
 app.use((err, req, res, next) => {

@@ -3,9 +3,9 @@ import bcryptjs from 'bcryptjs';
 import Role from '../model/role.schema.js';
 
 const users = [
-  { fullname: 'Admin', email: 'admin@gmail.com', password: 'admin123', role: 'Admin' },
-  { fullname: 'User', email: 'user@gmail.com', password: 'user123', role: 'User' },
-  { fullname: 'Organizer', email: 'organizer@gmail.com', password: 'organizer123', role: 'Organizer' }
+  { fullname: 'Admin', email: 'admin@gmail.com', password: 'admin123', role: 'Admin', contactNo: '9811111111' },
+  { fullname: 'User', email: 'user@gmail.com', password: 'user123', role: 'User', contactNo: '9822222222' },
+  { fullname: 'Organizer', email: 'organizer@gmail.com', password: 'organizer123', role: 'Organizer', contactNo: '9833333333' }
 ];
 
 const seedUsers = async () => {
@@ -33,6 +33,7 @@ const seedUsers = async () => {
       fullname: userData.fullname,
       email,
       password: hashedPassword,
+      contactNo: userData.contactNo,
       role: roleFound._id
     });
     

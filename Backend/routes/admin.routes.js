@@ -1,10 +1,12 @@
 import express from 'express';
-import { getPendingEvents, approveRejectEvent } from '../controller/admin.controller.js';
+import { getPendingEvents, approveRejectEvent, getDashboardStats } from '../controller/admin.controller.js';
 import { getAllPermissions, createPermission, deletePermission, getRolePermissions, assignPermissionToRole, removePermissionFromRole } from '../controller/permission.controller.js';
 import {protectAdmin} from '../middleware/adminMiddleware.js';
 import { authenticateUser } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
+
+router.get('/dashboard-stats', authenticateUser, protectAdmin, getDashboardStats);
 
 router.get('/pending-events', authenticateUser, protectAdmin, getPendingEvents);
 router.post('/approve-event/:eventId', authenticateUser, protectAdmin, approveRejectEvent);

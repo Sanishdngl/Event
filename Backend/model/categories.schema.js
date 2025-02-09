@@ -5,22 +5,22 @@ const categorySchema = new mongoose.Schema(
     categoryName: {
       type: String,
       required: true,
-      enum: [
-        'Food', 
-        'Festival', 
-        'Wedding', 
-        'Education', 
-        'Political', 
-        'Concert', 
-        'Sports', 
-        'Gaming'
-      ],
-      unique: true, 
-      trim: true,  
+      unique: true,
+      trim: true
     },
+    parentCategory: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      default: null
+    },
+    isActive: {
+      type: Boolean,
+      default: true
+    }
   },
   { timestamps: true }
 );
+
 categorySchema.index({ categoryName: 1 }, { unique: true });
 const Category = mongoose.model("Category", categorySchema);
 export default Category;

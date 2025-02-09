@@ -1,14 +1,16 @@
 import bcryptjs from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../model/user.schema.js';  
-import Role from '../model/role.schema.js'; 
+import Role from '../model/role.schema.js';
+import path from 'path';
+import fs from 'fs'; 
 
 export const signup = async (req, res) => {
     try {
-        const { fullname, email, password, role } = req.body;
+        const { fullname, email, password, role, contactNo } = req.body;
 
         // Validate input
-        if (!fullname || !email || !password || !role) {
+        if (!fullname || !email || !password || !role || !contactNo) {
             return res.status(400).json({ message: "All fields are required" });
         }
 
@@ -32,8 +34,8 @@ export const signup = async (req, res) => {
             fullname,
             email,
             password: hashedPassword,
-            role: foundRole._id, // Save the ObjectId reference to the Role
-            // isApproved: false,
+            contactNo,
+            role: foundRole._id,
         });
         await createdUser.save();
 
@@ -44,7 +46,8 @@ export const signup = async (req, res) => {
                 _id: createdUser._id,
                 fullname: createdUser.fullname,
                 email: createdUser.email,
-                role: foundRole.role_Name, // Include the role name in the response
+                contactNo: createdUser.contactNo,
+                role: foundRole.role_Name,
             },
         });
     } catch (error) {
@@ -190,3 +193,225 @@ export const getAllUsers = async (req, res) => {
         res.status(500).json({ message: "Internal Server Error" });
     }
 };
+
+export const addToWishlist = async (req, res) => {
+    try {
+        const { eventId } = req.body;
+        const userId = req.user.id; // From auth middleware
+
+        // Validate eventId
+        if (!eventId) {
+            return res.status(400).json({ message: "Event ID is required" });
+        }
+
+        // Find user and update wishlist
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Check if event already in wishlist
+        if (user.wishlist.includes(eventId)) {
+            return res.status(400).json({ message: "Event already in wishlist" });
+        }
+
+        // Add to wishlist
+        user.wishlist.push(eventId);
+        await user.save();
+
+        res.status(200).json({
+            message: "Event added to wishlist",
+            wishlist: user.wishlist
+        });
+    } catch (error) {
+        console.error("Error adding to wishlist:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+export const removeFromWishlist = async (req, res) => {
+    try {
+        const { eventId } = req.params;
+        const userId = req.user.id;
+
+        // Validate eventId
+        if (!eventId) {
+            return res.status(400).json({ message: "Event ID is required" });
+        }
+
+        // Find user and update wishlist
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Check if event exists in wishlist
+        const eventIndex = user.wishlist.findIndex(id => id.toString() === eventId);
+        if (eventIndex === -1) {
+            return res.status(404).json({ message: "Event not found in wishlist" });
+        }
+
+        // Remove from wishlist using splice for accurate removal
+        user.wishlist.splice(eventIndex, 1);
+        await user.save();
+
+        res.status(200).json({
+            message: "Event removed from wishlist",
+            wishlist: user.wishlist
+        });
+    } catch (error) {
+        console.error("Error removing from wishlist:", error);
+        // Check if error is a MongoDB CastError (invalid ID format)
+        if (error.name === 'CastError') {
+            return res.status(400).json({ message: "Invalid event ID format" });
+        }
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+export const getWishlist = async (req, res) => {
+    try {
+        const userId = req.user.id; // From auth middleware
+
+        // Find user and populate wishlist with event details
+        const user = await User.findById(userId).populate('wishlist');
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.status(200).json({
+            wishlist: user.wishlist
+        });
+    } catch (error) {
+        console.error("Error fetching wishlist:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+export const getUserProfile = async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await User.findById(userId)
+        .populate('role', 'role_Name')
+        .select('-password');
+  
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+  
+      res.status(200).json({
+        user: {
+          _id: user._id,
+          fullname: user.fullname,
+          email: user.email,
+          contactNo: user.contactNo,
+          role: user.role.role_Name,
+          profileImage: user.profileImage
+        }
+      });
+    } catch (error) {
+      console.error("Profile fetch error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+  
+export const updateProfile = async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { fullname, contactNo } = req.body;
+  
+      // Validate input
+      if (!fullname || !contactNo) {
+        return res.status(400).json({ message: "Fullname and contact number are required" });
+      }
+  
+      const user = await User.findByIdAndUpdate(
+        userId, 
+        { fullname, contactNo }, 
+        { new: true, runValidators: true }
+      );
+  
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+  
+      res.status(200).json({
+        message: "Profile updated successfully",
+        user: {
+          _id: user._id,
+          fullname: user.fullname,
+          email: user.email,
+          contactNo: user.contactNo
+        }
+      });
+    } catch (error) {
+      console.error("Profile update error:", error);
+      res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+export const uploadProfileImage = async (req, res) => {
+    try {
+      const image = req.files?.image;
+      const userId = req.user.id; // From auth middleware
+  
+      // Validate inputs
+      if (!image) {
+        return res.status(400).json({ message: "No image uploaded" });
+      }
+  
+      // Find the user to ensure they exist
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+  
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+      if (!allowedTypes.includes(image.mimetype)) {
+        return res.status(400).json({ 
+          message: "Invalid file type. Only JPEG, PNG, and GIF are allowed" 
+        });
+      }
+  
+      // Generate unique filename
+      const filename = `profile-${userId}-${Date.now()}.${image.name.split('.').pop()}`;
+      const uploadDir = path.join(process.cwd(), 'uploads', 'profiles');
+      
+      // Ensure directory exists
+      if (!fs.existsSync(uploadDir)){
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+  
+      const uploadPath = path.join(uploadDir, filename);
+      
+      // Delete existing profile image if it exists
+      if (user.profileImage) {
+        const oldImagePath = path.join(process.cwd(), user.profileImage);
+        if (fs.existsSync(oldImagePath)) {
+          fs.unlinkSync(oldImagePath);
+        }
+      }
+  
+      // Save file
+      await image.mv(uploadPath);
+  
+      // Update user with image URL
+      const imageUrl = `/uploads/profiles/${filename}`;
+      user.profileImage = imageUrl;
+      await user.save();
+  
+      res.status(200).json({ 
+        success: true,
+        message: "Profile image uploaded successfully", 
+        imageUrl 
+      });
+    } catch (error) {
+      console.error("Profile image upload error:", error);
+      res.status(500).json({ 
+        success: false,
+        message: "Profile image upload failed", 
+        error: error.message 
+      });
+    }
+  };

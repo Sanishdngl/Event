@@ -60,3 +60,28 @@ export const verifyRole = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
+export const getAdminRole = async (req, res) => {
+  try {
+    const adminRole = await Role.findOne({ role_Name: /^admin$/i });
+    
+    if (!adminRole) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Admin role not found" 
+      });
+    }
+
+    return res.status(200).json({ 
+      success: true,
+      roleId: adminRole._id,
+      role_Name: adminRole.role_Name
+    });
+  } catch (error) {
+    console.error("Error fetching admin role:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Internal Server Error" 
+    });
+  }
+};

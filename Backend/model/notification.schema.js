@@ -29,20 +29,20 @@ const notificationSchema = new mongoose.Schema(
         return ['event_request', 'event_response', 'event_update'].includes(this.type);
       }
     },
-    read: { 
-      type: Boolean, 
-      default: false 
-    },
     status: {                               // Added status field
       type: String,
       enum: ['read', 'unread', 'archived'],
       default: 'unread'
+    },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {}
     }
   },
   { 
     timestamps: true,
     indexes: [
-      { userId: 1, read: 1 },
+      { userId: 1, status: 1 },
       { forRole: 1, type: 1 },
       { createdAt: -1 },
       { status: 1 }                         // Added index for status
@@ -50,7 +50,6 @@ const notificationSchema = new mongoose.Schema(
   }
 );
 
-// Updated method to work with ObjectId roles
 notificationSchema.statics.markAllAsRead = async function(userId, roleId) {
   return this.updateMany(
     {
@@ -58,13 +57,80 @@ notificationSchema.statics.markAllAsRead = async function(userId, roleId) {
         { userId: userId },
         { forRole: roleId }
       ],
-      read: false
+      status: 'unread'
     },
     { 
-      read: true,
       status: 'read'
     }
   );
+};
+
+// Delete all notifications for a specific user or role
+notificationSchema.statics.deleteAllNotifications = async function(userId, roleId) {
+  return this.deleteMany({
+    $or: [
+      { userId: userId },
+      { forRole: roleId }
+    ]
+  });
+};
+
+// Delete notifications by type for a specific user or role
+notificationSchema.statics.deleteNotificationsByType = async function(userId, roleId, type) {
+  return this.deleteMany({
+    $or: [
+      { userId: userId },
+      { forRole: roleId }
+    ],
+    type: type
+  });
+};
+
+// Archive all notifications for a specific user or role
+notificationSchema.statics.archiveAllNotifications = async function(userId, roleId) {
+  return this.updateMany(
+    {
+      $or: [
+        { userId: userId },
+        { forRole: roleId }
+      ],
+      status: { $ne: 'archived' }
+    },
+    { 
+      status: 'archived'
+    }
+  );
+};
+
+// Get notification summary by type and status
+notificationSchema.statics.getNotificationSummary = async function(userId, roleId) {
+  return this.aggregate([
+    {
+      $match: {
+        $or: [
+          { userId: userId },
+          { forRole: roleId }
+        ]
+      }
+    },
+    {
+      $group: {
+        _id: { type: '$type', status: '$status' },
+        count: { $sum: 1 }
+      }
+    },
+    {
+      $group: {
+        _id: '$_id.type',
+        statuses: {
+          $push: {
+            status: '$_id.status', 
+            count: '$count'
+          }
+        }
+      }
+    }
+  ]);
 };
 
 export const Notification = mongoose.model('Notification', notificationSchema);
