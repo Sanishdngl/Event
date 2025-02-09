@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, Eye, EyeOff, Phone  } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import api from "../utils/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogAction } from '../Components/ui/dialog';
+import { Alert, AlertTitle, AlertDescription } from '../Components/ui/alert';
 
 const LoginSignup = () => {
   const { isDarkMode } = useTheme();
@@ -11,6 +13,7 @@ const LoginSignup = () => {
     email: '',
     password: '',
     confirmPassword: '',
+    contactNo: '',
     role: ''
   });
   const [errors, setErrors] = useState({});
@@ -18,13 +21,14 @@ const LoginSignup = () => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [showErrorAlert, setShowErrorAlert] = useState(false);
 
   useEffect(() => {
       window.scrollTo(0, 0);
     }, []);
 
   useEffect(() => {
-    // Check if user is already authenticated
     const token = localStorage.getItem('token');
     const role = localStorage.getItem('role');
     if (token && role) {
@@ -38,11 +42,11 @@ const LoginSignup = () => {
       ...prev,
       [name]: value
     }));
-    // Clear error when user types
     setErrors(prev => ({
       ...prev,
       [name]: ''
     }));
+    setShowErrorAlert(false);
   };
 
   const validateForm = () => {
@@ -57,6 +61,9 @@ const LoginSignup = () => {
     }
     if (activeTab === 'signup' && formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
+    }
+    if (activeTab === 'signup' && !formData.contactNo) {
+      newErrors.contactNo = 'Contact number is required';
     }
     if (activeTab === 'signup' && !formData.role) {
       newErrors.role = 'Role is required';
@@ -78,6 +85,7 @@ const LoginSignup = () => {
         break;
       default:
         setError('Invalid user role');
+        setShowErrorAlert(true);
     }
   };
 
@@ -88,27 +96,21 @@ const LoginSignup = () => {
             password: formData.password
         };
 
-        // Update the endpoint to match your backend route structure
         const response = await api.post("/users/login", loginData);
         
         if (response.data?.token && response.data?.user) {
             localStorage.setItem('token', response.data.token);
             localStorage.setItem('role', response.data.user.role);
             
-            // Clear any existing errors
             setError('');
-            
-            // Add some debug logging
-            console.log("Login successful:", response.data);
-            
-            // Redirect based on role
+            setShowErrorAlert(false);
             redirectBasedOnRole(response.data.user.role);
         } else {
             setError('Invalid response from server');
         }
     } catch (error) {
         console.error("Login Error:", error.response?.data || error.message);
-        let errorMessage = 'An error occurred during login';
+        let errorMessage = 'Invalid email or password';
         
         if (error.response?.data?.message) {
             errorMessage = error.response.data.message;
@@ -117,6 +119,7 @@ const LoginSignup = () => {
         }
         
         setError(errorMessage);
+        setShowErrorAlert(true);
         setLoading(false);
     }
 };
@@ -127,10 +130,10 @@ const handleSignup = async () => {
             fullname: formData.fullname,
             email: formData.email,
             password: formData.password,
+            contactNo: formData.contactNo,
             role: formData.role
         };
 
-        // Update the endpoint to match your backend route structure
         const response = await api.post("/users/signup", signupData);
         
         if (response.data?.user) {
@@ -142,6 +145,7 @@ const handleSignup = async () => {
                 email: '',
                 password: '',
                 confirmPassword: '',
+                contactNo: '',
                 role: ''
             });
         } else {
@@ -158,6 +162,7 @@ const handleSignup = async () => {
         }
         
         setError(errorMessage);
+        setShowErrorAlert(true);
     } finally {
         setLoading(false);
     }
@@ -166,6 +171,7 @@ const handleSignup = async () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setShowErrorAlert(false);
     if (!validateForm()) return;
     setLoading(true);
     try {
@@ -181,7 +187,20 @@ const handleSignup = async () => {
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gradient-to-b from-blue-600 to-blue-800'} pt-20`}>
-      <div className="max-w-md mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-6 flex items-center justify-center">
+        {/* Image Section */}
+        <div className="hidden md:block md:w-1/2 p-2">
+          <div className="relative rounded-lg overflow-hidden shadow-xl">
+            <img 
+              src='/src/assets/images/community.webp'
+              alt="Illustration"
+              className="w-full h-full object-cover rounded-lg transition-transform transform hover:scale-105 hover:shadow-lg"
+            />
+          </div>
+        </div>
+
+        {/* Form Section */}
+        <div className="max-w-md mx-auto p-6">
         <div className={`${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl overflow-hidden`}>
           <div className="flex">
             <button
@@ -215,11 +234,13 @@ const handleSignup = async () => {
               {activeTab === 'login' ? 'Welcome Back!' : 'Create Account'}
             </h2>
 
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
+            {/* Error Alert */}
+            {showErrorAlert && (
+                <Alert variant="destructive" className="mb-6">
+                  <AlertTitle>Error</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               {activeTab === 'signup' && (
@@ -306,6 +327,23 @@ const handleSignup = async () => {
                 </div>
               )}
 
+{activeTab === 'signup' && (
+  <div className="relative">
+    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+    <input
+      type="tel"
+      name="contactNo"
+      placeholder="Contact Number"
+      value={formData.contactNo}
+      onChange={handleInputChange}
+      className="w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+    />
+    {errors.contactNo && (
+      <p className="text-red-500 text-xs mt-1">{errors.contactNo}</p>
+    )}
+  </div>
+)}
+
               {activeTab === 'signup' && (
                 <div className="relative">
                   <select
@@ -343,7 +381,29 @@ const handleSignup = async () => {
             )}
           </div>
         </div>
+        </div>
       </div>
+      {/* Success Dialog */}
+      <Dialog open={showSuccessDialog} onClose={() => setShowSuccessDialog(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Account Created Successfully!</DialogTitle>
+            <DialogDescription>
+              Your account has been created successfully. You can now log in with your credentials.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogAction
+              onClick={() => {
+                setShowSuccessDialog(false);
+                setActiveTab('login');
+              }}
+            >
+              Proceed to Login
+            </DialogAction>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

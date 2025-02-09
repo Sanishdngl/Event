@@ -186,10 +186,13 @@ const NotificationDropdown = ({ isDarkMode }) => {
                     {notification.message}
                   </p>
                   <p className={`text-xs ${themeClasses.mutedText} mt-1`}>
-                    {formatDistance(new Date(notification.createdAt), new Date(), { 
-                      addSuffix: true 
-                    })}
-                  </p>
+  {notification.createdAt 
+    ? formatDistance(new Date(notification.createdAt), new Date(), { 
+        addSuffix: true 
+      }) 
+    : 'Unknown time'
+  }
+</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {!notification.read && (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../../utils/api';
 import { useNavigate } from 'react-router-dom';
+import websocketManager from '../../../utils/websocketManager';
 
 const EventsManagement = ({ isDarkMode }) => {
   const [pendingEvents, setPendingEvents] = useState([]);
@@ -50,24 +51,51 @@ const EventsManagement = ({ isDarkMode }) => {
       if (!token) {
         throw new Error('No authentication token found');
       }
-  
-      const response = await api.post(`/admin/approve-event/${eventId}`, {
+      const notificationData = {
+        eventId,
+        status: action === 'approve' ? 'approved' : 'rejected',
+        message: `Your event has been ${action === 'approve' ? 'approved' : 'rejected'}`,
+        type: 'event_response'
+      };
+      const eventResponse = await api.post(`/admin/approve-event/${eventId}`, {
         status: action === 'approve' ? 'approved' : 'rejected'
       }, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-  
-      if (response?.data?.success) {
+   
+      if (eventResponse?.data?.success) {
+        let persistentNotificationResponse;
+        try {
+          persistentNotificationResponse = await api.post('/notifications/events', notificationData);
+        } catch (notificationError) {
+          console.warn('Failed to create persistent notification:', notificationError);
+        }
+   
+        if (
+          (!persistentNotificationResponse ||
+           persistentNotificationResponse.status === 200 ||
+           persistentNotificationResponse.status === 201) &&
+          websocketManager?.isConnected()
+        ) {
+          try {
+            websocketManager.send('event_response', {
+              ...notificationData,
+              notificationId: persistentNotificationResponse?.data?.notificationId || Date.now()
+            });
+          } catch (wsError) {
+            console.warn('WebSocket notification failed:', wsError);
+          }
+        }
         setPendingEvents(prev => prev.filter(event => event._id !== eventId));
         setError(null);
       } else {
         throw new Error('Failed to update event status');
       }
+      return eventResponse;
     } catch (err) {
       console.error('Action error:', err);
-
       if (err.response?.status === 403) {
         setError("You don't have permission to perform this action");
       } else if (err.response?.status === 401) {
@@ -76,6 +104,7 @@ const EventsManagement = ({ isDarkMode }) => {
       } else {
         setError(`Failed to ${action} event: ${err.response?.data?.message || err.message}`);
       }
+      throw err;
     } finally {
       setIsLoading(false);
     }

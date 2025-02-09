@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { notificationService } from '../services/notificationService';
 import websocketManager from '../utils/websocketManager';
 import { useAuth } from './AuthContext';
+import notificationSound from '../assets/sounds/notification.mp3';
 
 const NotificationContext = createContext();
 
@@ -20,6 +21,7 @@ export const NotificationProvider = ({ children }) => {
     limit: 10
   });
   const [wsConnected, setWsConnected] = useState(false);
+  const audioNotification = new Audio(notificationSound);
 
   // WebSocket connection and event handlers
   useEffect(() => {
@@ -41,6 +43,46 @@ export const NotificationProvider = ({ children }) => {
         websocketManager.connect();
       };
 
+      // Define event handlers
+    const handleNotification = (payload) => {
+      audioNotification.play().catch(error => {
+        console.warn('Error playing notification sound:', error);
+      });
+      setNotifications(prev => [payload, ...prev]);
+      setUnreadCount(prev => prev + 1);
+    };
+
+    const handleNotificationRead = (data) => {
+      const notificationId = data.payload?.notificationId;
+      if (notificationId) {
+        setNotifications(prev =>
+          prev.map(notification =>
+            notification._id === notificationId
+              ? { ...notification, read: true }
+              : notification
+          )
+        );
+        updateUnreadCount();
+      }
+    };
+
+    const handleAllNotificationsRead = () => {
+      setNotifications(prev =>
+        prev.map(notification => ({ ...notification, read: true }))
+      );
+      setUnreadCount(0);
+    };
+
+    const handleNotificationDeleted = (data) => {
+      const notificationId = data.payload?.notificationId;
+      if (notificationId) {
+        setNotifications(prev =>
+          prev.filter(notification => notification._id !== notificationId)
+        );
+        updateUnreadCount();
+      }
+    };
+
       // Handle WebSocket events
       websocketManager.on('connected', () => handleConnectionChange(true));
       websocketManager.on('disconnected', () => {
@@ -48,10 +90,12 @@ export const NotificationProvider = ({ children }) => {
         // Attempt to reconnect after 5 seconds
         reconnectTimeout = setTimeout(connect, 5000);
       });
-      websocketManager.on('newNotification', handleNewNotification);
+      websocketManager.on('notification', handleNewNotification);
+      websocketManager.on('new_notification', handleNewNotification);
       websocketManager.on('notificationRead', handleNotificationRead);
+      websocketManager.on('all_notifications_read', handleAllNotificationsRead);
       websocketManager.on('allNotificationsRead', handleAllNotificationsRead);
-      websocketManager.on('notificationDeleted', handleNotificationDeleted);
+      websocketManager.on('notification_deleted', handleNotificationDeleted);
       websocketManager.on('error', handleWebSocketError);
 
       // Initial connection
@@ -198,6 +242,9 @@ export const NotificationProvider = ({ children }) => {
 
   // WebSocket event handlers
   const handleNewNotification = (notification) => {
+    audioNotification.play().catch(error => {
+      console.warn('Error playing notification sound:', error);
+    });
     setNotifications(prev => [notification, ...prev]);
     setUnreadCount(prev => prev + 1);
   };

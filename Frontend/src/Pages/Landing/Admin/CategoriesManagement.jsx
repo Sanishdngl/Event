@@ -1,15 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { Tag, Plus, Trash2, Edit2, Check, X } from 'lucide-react';
+import { Tag, Plus, Trash2, Edit2, Check, X, RefreshCw, ChevronRight, ChevronDown } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../Components/ui/select";
+import { Button } from "../../../Components/ui/button";
+import { Input } from "../../../Components/ui/input";
+import api from '../../../utils/api';
 
 const CategoriesManagement = ({ isDarkMode }) => {
   const [categories, setCategories] = useState([]);
-  const [newCategory, setNewCategory] = useState('');
-  const [newDescription, setNewDescription] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [parentCategory, setParentCategory] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
   const [editName, setEditName] = useState('');
-  const [editDescription, setEditDescription] = useState('');
+  const [editParentCategory, setEditParentCategory] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState(new Set());
 
   const componentClass = isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
 
@@ -20,12 +31,8 @@ const CategoriesManagement = ({ isDarkMode }) => {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/categories');
-      if (!response.ok) {
-        throw new Error('Failed to fetch categories');
-      }
-      const data = await response.json();
-      setCategories(data);
+      const response = await api.safeGet('/categories');
+      setCategories(response.data);
     } catch (err) {
       console.error('Error fetching categories:', err);
       setError(err.message);
@@ -34,87 +41,258 @@ const CategoriesManagement = ({ isDarkMode }) => {
     }
   };
 
+  // Organize categories into a hierarchical structure
+  const organizeCategories = () => {
+    const categoryMap = new Map();
+    const rootCategories = [];
+
+    // First, create a map of all categories
+    categories.forEach(category => {
+      categoryMap.set(category._id, { ...category, children: [] });
+    });
+
+    // Then, organize them into a tree structure
+    categories.forEach(category => {
+      const categoryWithChildren = categoryMap.get(category._id);
+      if (category.parentCategory?._id) {
+        const parent = categoryMap.get(category.parentCategory._id);
+        if (parent) {
+          parent.children.push(categoryWithChildren);
+        }
+      } else {
+        rootCategories.push(categoryWithChildren);
+      }
+    });
+
+    return rootCategories;
+  };
+
+  const getCategoryNameById = (categoryId) => {
+    const category = categories.find(cat => cat._id === categoryId);
+    return category ? category.categoryName : '';
+  };
+
+  const toggleExpand = (categoryId) => {
+    setExpandedCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId);
+      } else {
+        newSet.add(categoryId);
+      }
+      return newSet;
+    });
+  };
+
+  // Recursive component to render category and its children
+  const CategoryRow = ({ category, level = 0, parentPath = [] }) => {
+    const isExpanded = expandedCategories.has(category._id);
+    const hasChildren = category.children && category.children.length > 0;
+    const indentation = level * 24; // 24px indentation per level
+
+    return (
+      <>
+        <tr className={`border-b border-gray-700 ${!category.isActive ? 'opacity-50' : ''}`}>
+          <td className="py-4">
+            <div className="flex items-center" style={{ paddingLeft: `${indentation}px` }}>
+              {hasChildren && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="w-6 h-6 mr-2"
+                  onClick={() => toggleExpand(category._id)}
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                </Button>
+              )}
+              {!hasChildren && <div className="w-8" />}
+              {editingCategory === category._id ? (
+                <Input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+              ) : (
+                category.categoryName
+              )}
+            </div>
+          </td>
+          <td className="py-4">
+            {editingCategory === category._id ? (
+              <Select 
+                value={editParentCategory}
+                onValueChange={setEditParentCategory}
+              >
+                <SelectTrigger className="w-48">
+                <SelectValue>
+        {editParentCategory ? getCategoryNameById(editParentCategory) : "Parent Category"}
+      </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None</SelectItem>
+                  {categories
+                    .filter(cat => 
+                      cat._id !== category._id && 
+                      !parentPath.includes(cat._id) &&
+                      cat.isActive
+                    )
+                    .map(cat => (
+                      <SelectItem key={cat._id} value={cat._id}>
+                        {cat.categoryName}
+                      </SelectItem>
+                    ))
+                  }
+                </SelectContent>
+              </Select>
+            ) : (
+              category.parentCategory?.categoryName || '-'
+            )}
+          </td>
+          <td className="py-4">
+            <span className={`px-2 py-1 rounded-full text-sm ${
+              category.isActive
+                ? 'bg-green-500/20 text-green-500'
+                : 'bg-red-500/20 text-red-500'
+            }`}>
+              {category.isActive ? 'Active' : 'Inactive'}
+            </span>
+          </td>
+          <td className="py-4">
+            <div className="flex justify-end gap-2">
+              {editingCategory === category._id ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleUpdateCategory(category._id)}
+                    className="text-green-400 hover:text-green-500 hover:bg-green-500/10"
+                  >
+                    <Check className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={cancelEditing}
+                    className="text-red-400 hover:text-red-500 hover:bg-red-500/10"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {category.isActive ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => startEditing(category)}
+                        className="text-blue-400 hover:text-blue-500 hover:bg-blue-500/10"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeactivateCategory(category._id)}
+                        className="text-red-400 hover:text-red-500 hover:bg-red-500/10"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleReactivateCategory(category._id)}
+                      className="text-green-400 hover:text-green-500 hover:bg-green-500/10"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          </td>
+        </tr>
+        {hasChildren && isExpanded && (
+          category.children.map(child => (
+            <CategoryRow 
+              key={child._id} 
+              category={child} 
+              level={level + 1}
+              parentPath={[...parentPath, category._id]}
+            />
+          ))
+        )}
+      </>
+    );
+  };
+
   const handleAddCategory = async () => {
-    if (!newCategory.trim()) return;
+    if (!newCategoryName.trim()) return;
 
     try {
       setError(null);
-      const response = await fetch('/api/v1/categories', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: newCategory,
-          description: newDescription
-        })
+      const response = await api.safePost('/categories', {
+        categoryName: newCategoryName,
+        parentCategory: parentCategory || null
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to create category');
-      }
-
-      const createdCategory = await response.json();
-      setCategories([...categories, createdCategory]);
-      setNewCategory('');
-      setNewDescription('');
+      setCategories([...categories, response.data]);
+      setNewCategoryName('');
+      setParentCategory('');
     } catch (err) {
       console.error('Error creating category:', err);
       setError(err.message);
     }
   };
 
-  const handleDeleteCategory = async (categoryId) => {
+  const handleDeactivateCategory = async (categoryId) => {
     try {
       setError(null);
-      const response = await fetch(`/api/v1/categories/${categoryId}`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete category');
-      }
-
-      setCategories(categories.filter(category => category._id !== categoryId));
+      await api.safePatch(`/categories/${categoryId}/deactivate`);
+      
+      setCategories(categories.map(category => 
+        category._id === categoryId 
+          ? { ...category, isActive: false }
+          : category
+      ));
     } catch (err) {
-      console.error('Error deleting category:', err);
-      setError(err.message);
+      console.error('Error deactivating category:', err);
+      setError(err.message || 'Failed to deactivate category');
     }
   };
 
-  const startEditing = (category) => {
-    setEditingCategory(category._id);
-    setEditName(category.name);
-    setEditDescription(category.description || '');
-  };
-
-  const cancelEditing = () => {
-    setEditingCategory(null);
-    setEditName('');
-    setEditDescription('');
+  const handleReactivateCategory = async (categoryId) => {
+    try {
+      setError(null);
+      await api.safePatch(`/categories/${categoryId}/reactivate`);
+      
+      setCategories(categories.map(category => 
+        category._id === categoryId 
+          ? { ...category, isActive: true }
+          : category
+      ));
+    } catch (err) {
+      console.error('Error reactivating category:', err);
+      setError(err.message);
+    }
   };
 
   const handleUpdateCategory = async (categoryId) => {
     try {
       setError(null);
-      const response = await fetch(`/api/v1/categories/${categoryId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: editName,
-          description: editDescription
-        })
+      const response = await api.safePut(`/categories/${categoryId}`, {
+        categoryName: editName,
+        parentCategory: editParentCategory || null
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to update category');
-      }
-
-      const updatedCategory = await response.json();
       setCategories(categories.map(cat => 
-        cat._id === categoryId ? updatedCategory : cat
+        cat._id === categoryId ? response.data : cat
       ));
       setEditingCategory(null);
     } catch (err) {
@@ -123,18 +301,35 @@ const CategoriesManagement = ({ isDarkMode }) => {
     }
   };
 
+  const startEditing = (category) => {
+    setEditingCategory(category._id);
+    setEditName(category.categoryName);
+    setEditParentCategory(category.parentCategory?._id || '');
+  };
+
+  const cancelEditing = () => {
+    setEditingCategory(null);
+    setEditName('');
+    setEditParentCategory('');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-40">
-        <p className="text-lg">Loading categories...</p>
+        <RefreshCw className="w-6 h-6 animate-spin" />
       </div>
     );
   }
 
+  const activeCategories = categories.filter(cat => cat.isActive);
+  const organizedCategories = organizeCategories();
+
   return (
     <div className="space-y-6">
       {error && (
-        <div className={`p-4 border-l-4 rounded-md ${isDarkMode ? 'bg-red-900/20 border-red-500 text-red-300' : 'bg-red-100 border-red-500 text-red-700'}`}>
+        <div className={`p-4 border-l-4 rounded-md ${
+          isDarkMode ? 'bg-red-900/20 border-red-500 text-red-300' : 'bg-red-100 border-red-500 text-red-700'
+        }`}>
           <p>Error: {error}</p>
         </div>
       )}
@@ -153,120 +348,60 @@ const CategoriesManagement = ({ isDarkMode }) => {
           <div className="mb-6">
             <div className="flex flex-col gap-4">
               <div className="flex gap-4">
-                <input
+                <Input
                   type="text"
-                  value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
                   placeholder="Enter category name"
-                  className={`flex-1 px-4 py-2 rounded-xl border ${
-                    isDarkMode 
-                      ? 'bg-gray-700/30 border-gray-700 focus:border-indigo-500' 
-                      : 'bg-gray-100 border-gray-200 focus:border-indigo-500'
-                  } focus:outline-none`}
+                  className="flex-1"
                 />
-                <button
-                  onClick={handleAddCategory}
-                  className="px-4 py-2 text-white bg-indigo-500 rounded-xl hover:bg-indigo-600 transition-colors flex items-center gap-2"
+                <Select 
+                  value={parentCategory}
+                  onValueChange={setParentCategory}
                 >
-                  <Plus className="w-4 h-4" />
+                  <SelectTrigger className="w-48">
+                  <SelectValue>
+        {parentCategory ? getCategoryNameById(parentCategory) : "Parent Category"}
+      </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {activeCategories.map(category => (
+                      <SelectItem key={category._id} value={category._id}>
+                        {category.categoryName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleAddCategory}
+                  className="bg-indigo-500 hover:bg-indigo-600"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
                   Add Category
-                </button>
+                </Button>
               </div>
-              <input
-                type="text"
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                placeholder="Enter category description (optional)"
-                className={`w-full px-4 py-2 rounded-xl border ${
-                  isDarkMode 
-                    ? 'bg-gray-700/30 border-gray-700 focus:border-indigo-500' 
-                    : 'bg-gray-100 border-gray-200 focus:border-indigo-500'
-                } focus:outline-none`}
-              />
             </div>
           </div>
 
-          {/* Categories List */}
+          {/* Categories Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-700">
                   <th className="pb-3 text-left font-medium opacity-60">Name</th>
-                  <th className="pb-3 text-left font-medium opacity-60">Description</th>
+                  <th className="pb-3 text-left font-medium opacity-60">Parent Category</th>
+                  <th className="pb-3 text-left font-medium opacity-60">Status</th>
                   <th className="pb-3 text-right font-medium opacity-60">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {categories.map((category) => (
-                  <tr key={category._id} className="border-b border-gray-700">
-                    <td className="py-4">
-                      {editingCategory === category._id ? (
-                        <input
-                          type="text"
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          className={`w-full px-3 py-1 rounded-lg border ${
-                            isDarkMode 
-                              ? 'bg-gray-700/30 border-gray-700' 
-                              : 'bg-gray-100 border-gray-200'
-                          }`}
-                        />
-                      ) : (
-                        category.name
-                      )}
-                    </td>
-                    <td className="py-4">
-                      {editingCategory === category._id ? (
-                        <input
-                          type="text"
-                          value={editDescription}
-                          onChange={(e) => setEditDescription(e.target.value)}
-                          className={`w-full px-3 py-1 rounded-lg border ${
-                            isDarkMode 
-                              ? 'bg-gray-700/30 border-gray-700' 
-                              : 'bg-gray-100 border-gray-200'
-                          }`}
-                        />
-                      ) : (
-                        category.description || '-'
-                      )}
-                    </td>
-                    <td className="py-4">
-                      <div className="flex justify-end gap-2">
-                        {editingCategory === category._id ? (
-                          <>
-                            <button
-                              onClick={() => handleUpdateCategory(category._id)}
-                              className="p-2 text-green-400 rounded-lg hover:bg-gray-700/30 transition-colors"
-                            >
-                              <Check className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={cancelEditing}
-                              className="p-2 text-red-400 rounded-lg hover:bg-gray-700/30 transition-colors"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => startEditing(category)}
-                              className="p-2 text-blue-400 rounded-lg hover:bg-gray-700/30 transition-colors"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteCategory(category._id)}
-                              className="p-2 text-red-400 rounded-lg hover:bg-gray-700/30 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                {organizedCategories.map(category => (
+                  <CategoryRow 
+                    key={category._id} 
+                    category={category}
+                    parentPath={[]}
+                  />
                 ))}
               </tbody>
             </table>

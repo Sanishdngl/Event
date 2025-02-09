@@ -3,12 +3,14 @@ import {
   AlertCircle,
   Info,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 
 export const Alert = ({ 
   children, 
-  className, 
+  className = "", 
   variant = "default", 
   icon,
   ...props 
@@ -26,7 +28,9 @@ export const Alert = ({
     destructive: XCircle,
     success: CheckCircle2,
     warning: AlertCircle,
-    info: Info
+    info: Info,
+    wifi: Wifi,
+    wifiOff: WifiOff
   };
 
   const IconComponent = icon || icons[variant];
@@ -34,7 +38,7 @@ export const Alert = ({
   return (
     <div
       role="alert"
-      className={`relative w-full rounded-lg px-4 py-3 text-sm ${variants[variant]} ${className}`}
+      className={`relative w-full rounded-lg px-4 py-3 text-sm [&>svg]:h-4 [&>svg]:w-4 ${variants[variant]} ${className}`}
       {...props}
     >
       <div className="flex items-start gap-4">
@@ -43,6 +47,36 @@ export const Alert = ({
         )}
         <div className="flex-1">{children}</div>
       </div>
+    </div>
+  );
+};
+
+export const AlertTitle = ({
+  children,
+  className = "",
+  ...props
+}) => {
+  return (
+    <h5
+      className={`mb-1 font-medium leading-none tracking-tight ${className}`}
+      {...props}
+    >
+      {children}
+    </h5>
+  );
+};
+
+export const AlertDescription = ({ 
+  children,
+  className = "",
+  ...props 
+}) => {
+  return (
+    <div
+      className={`text-sm [&_p]:leading-relaxed ${className}`}
+      {...props}
+    >
+      {children}
     </div>
   );
 };

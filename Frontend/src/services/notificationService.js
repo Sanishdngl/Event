@@ -35,13 +35,13 @@ markAsRead: async (notificationId) => {
   // Mark all notifications as read
   markAllAsRead: async () => {
     try {
-        const response = await api.safePatch(`${NOTIFICATIONS_ENDPOINT}/read-all`);
+        const response = await api.safePatch(`${NOTIFICATIONS_ENDPOINT}/read-all`, {});  // Add empty object as body
         return response.data;
     } catch (error) {
         console.error('Failed to mark all notifications as read:', error);
         throw error;
     }
-},
+  },
 
   // Get unread count
   getUnreadCount: async () => {

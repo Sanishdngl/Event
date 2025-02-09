@@ -1,11 +1,15 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, LogOut } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useSidebar } from '../context/SidebarContext';
-import { adminDashboardConfig, organizerDashboardConfig } from '../config/dashboardConfig';
+import { 
+  adminDashboardConfig, 
+  organizerDashboardConfig, 
+  userDashboardConfig 
+} from '../config/dashboardConfig';
 
-const Sidebar = ({ user, onLogout }) => {
+const Sidebar = ({ user }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDarkMode } = useTheme();
@@ -14,7 +18,9 @@ const Sidebar = ({ user, onLogout }) => {
   // Determine which configuration to use based on user role
   const config = user?.role?.toLowerCase() === 'admin' 
     ? adminDashboardConfig 
-    : organizerDashboardConfig;
+    : user?.role?.toLowerCase() === 'organizer'
+    ? organizerDashboardConfig
+    : userDashboardConfig;
   
   // Extract the current tab from the URL path
   const currentPath = location.pathname;
@@ -103,20 +109,6 @@ const Sidebar = ({ user, onLogout }) => {
           );
         })}
       </ul>
-
-      {/* Logout button */}
-      <div className="absolute bottom-4 left-0 right-0 px-4">
-        <button 
-          onClick={onLogout}
-          className={`
-            w-full flex items-center gap-2 px-6 py-2 rounded-lg text-red-500
-            ${isDarkMode ? 'hover:bg-red-900/20' : 'hover:bg-red-50'}
-          `}
-        >
-          <LogOut className="w-5 h-5" />
-          <span className={`${isSidebarOpen ? "block" : "hidden"}`}>Logout</span>
-        </button>
-      </div>
     </div>
   );
 };

@@ -1,19 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Routes, Route, Navigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { clearAuth } from '../utils/auth';
 import { useSidebar } from '../context/SidebarContext';
 import { ErrorBoundary } from '../Components/ErrorBoundary';
 import { Spinner } from '../Components/ui/spinner';
-import { Alert } from '../Components/ui/alert';
-import { Card } from '../Components/ui/card';
-import { adminDashboardConfig, organizerDashboardConfig } from '../config/dashboardConfig';
 import NavBar from './NavBar';
 import Sidebar from './Sidebar';
+import { adminDashboardConfig, organizerDashboardConfig, userDashboardConfig } from '../config/dashboardConfig';
 
 const Dashboard = () => {
-  const { tab } = useParams();
+  const { '*': currentPath } = useParams();
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
   const { user } = useAuth();
@@ -22,17 +20,22 @@ const Dashboard = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Select dashboard configuration based on user role
-  const config = user?.role?.toLowerCase() === 'admin' 
-    ? adminDashboardConfig 
-    : organizerDashboardConfig;
+  const config = {
+    admin: adminDashboardConfig,
+    organizer: organizerDashboardConfig,
+    user: userDashboardConfig
+  }[user?.role?.toLowerCase()] || userDashboardConfig;
+
+  const getFirstTabKey = () => {
+    return Object.keys(config.tabs)[0];
+  };
 
   const handleLogout = () => {
     try {
       clearAuth();
       navigate('/loginsignup', { replace: true });
-    } catch (error) {
-      console.error('Logout failed:', error);
+    } catch (err) {
+      setError('Logout failed. Please try again.');
     }
   };
 
@@ -40,14 +43,32 @@ const Dashboard = () => {
     const initializeDashboard = async () => {
       try {
         setLoading(true);
-        const normalizedTab = tab?.toLowerCase() || config.defaultTab;
-
-        if (!config.tabs[normalizedTab]) {
-          navigate(`${config.basePath}/${config.defaultTab}`, { replace: true });
+        // Get the current path segments
+        const pathSegments = currentPath?.split('/') || [];
+        const currentTab = pathSegments[0]?.toLowerCase() || '';
+        
+        // Check if the current path matches any additional routes
+        const isAdditionalRoute = config.additionalRoutes && 
+          Object.keys(config.additionalRoutes).some(route => {
+            const routeSegments = route.split('/');
+            return routeSegments.every((segment, index) => {
+              // Handle route parameters (segments starting with ':')
+              if (segment.startsWith(':')) return true;
+              return segment === pathSegments[index];
+            });
+          });
+        
+        // Only redirect if it's not an additional route and not a valid tab
+        if (!isAdditionalRoute && !config.tabs[currentTab]) {
+          navigate(`${config.basePath}/${getFirstTabKey()}`, { replace: true });
           return;
         }
-
-        setActiveTab(normalizedTab);
+        
+        // Set active tab only if it's a main tab
+        if (config.tabs[currentTab]) {
+          setActiveTab(currentTab);
+        }
+        
         setError('');
       } catch (err) {
         setError(err.message || 'An unexpected error occurred');
@@ -57,53 +78,81 @@ const Dashboard = () => {
     };
 
     initializeDashboard();
-  }, [tab, navigate, config]);
+  }, [currentPath, navigate, config]);
 
   const renderContent = () => {
     if (loading) {
       return <Spinner className="flex justify-center p-8" />;
     }
 
-    if (error) {
-      return <Alert variant="destructive">{error}</Alert>;
-    }
+    return (
+      <Routes>
+        {/* Default route redirects to first tab */}
+        <Route 
+          index
+          element={<Navigate to={getFirstTabKey()} replace />} 
+        />
 
-    const TabComponent = config.tabs[activeTab]?.component;
-    if (!TabComponent) return null;
+        {/* Regular tab routes */}
+        {Object.entries(config.tabs).map(([key, tabConfig]) => (
+          <Route 
+            key={key}
+            path={key}
+            element={<tabConfig.component isDarkMode={isDarkMode} user={user} />}
+          />
+        ))}
+        
+        {/* Additional routes that don't show in sidebar */}
+        {config.additionalRoutes && Object.entries(config.additionalRoutes).map(([path, routeConfig]) => (
+          <Route
+            key={path}
+            path={path}
+            element={<routeConfig.component isDarkMode={isDarkMode} user={user} />}
+          />
+        ))}
 
-    return <TabComponent isDarkMode={isDarkMode} user={user} />;
+        {/* Only redirect to first tab if it's not an additional route */}
+        <Route 
+          path="*" 
+          element={
+            Object.keys(config.additionalRoutes || {}).some(route => 
+              new RegExp('^' + route.replace(/:[^\s/]+/g, '[^/]+') + '$').test(currentPath)
+            ) 
+              ? null 
+              : <Navigate to={getFirstTabKey()} replace />
+          } 
+        />
+      </Routes>
+    );
   };
 
   return (
     <ErrorBoundary>
-      <div className="flex min-h-screen bg-background">
+      <main className={`flex min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         <Sidebar
           user={user}
           onLogout={handleLogout}
+          config={config}
+          activeTab={activeTab}
         />
         
-        <div className="flex flex-col flex-1">
+        <section className="flex flex-col flex-1">
           <NavBar />
-          <main className={`
-            flex-1 transition-all duration-300 pt-20
-            ${isSidebarOpen ? 'ml-64' : 'ml-16'}
-          `}>
-            <div className="p-8">
-              <div className="mb-6">
-                <h1 className="text-2xl font-bold mb-2">
-                  {config.tabs[activeTab]?.title}
-                </h1>
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  {config.tabs[activeTab]?.description}
-                </p>
-              </div>
-              <Card className="p-6">
-                {renderContent()}
-              </Card>
-            </div>
-          </main>
-        </div>
-      </div>
+          <article 
+            className={`
+              flex-1 
+              transition-all 
+              duration-300 
+              pt-20 
+              ${isSidebarOpen ? 'ml-64' : 'ml-16'}
+              ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}
+              px-6
+            `}
+          >
+            {renderContent()}
+          </article>
+        </section>
+      </main>
     </ErrorBoundary>
   );
 };

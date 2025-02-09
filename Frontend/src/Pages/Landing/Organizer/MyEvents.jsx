@@ -67,18 +67,20 @@ const MyEvents = ({ isDarkMode }) => {
 
   if (loading) return <div className="flex justify-center p-8">Loading...</div>;
   if (error) return <div className="text-red-500 p-4">{error}</div>;
-
+  
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      
       {events.map((event) => (
         <div key={event._id} className={`${
           isDarkMode ? 'bg-gray-800 text-gray-100' : 'bg-white'
-        } rounded-lg shadow-md overflow-hidden`}>
-          <img 
-            src={event.image || "/default-event.jpg"} 
-            alt={event.event_name}
-            className="w-full h-48 object-cover"
-          />
+        } rounded-lg shadow-md overflow-hidden`}> 
+        
+        <img
+   src={event.image ? `/uploads/events/${event.image.split('/').pop()}` : "/default-event.jpg"}
+   alt={event.event_name}
+   className="w-full h-48 object-cover"
+/>
           
           <div className="p-4">
             <h3 className="text-xl font-semibold mb-2">{event.event_name}</h3>
@@ -93,7 +95,7 @@ const MyEvents = ({ isDarkMode }) => {
             }`}>
               <p>Date: {format(new Date(event.event_date), 'PPP')}</p>
               <p>Location: {event.location}</p>
-              <p>Price: ${event.price}</p>
+              <p>Price: Rs.{event.price}</p>
               <p>Slots: {event.attendees?.length || 0}/{event.totalSlots}</p>
             </div>
             

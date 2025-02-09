@@ -1,23 +1,30 @@
 import { Link, useLocation } from "react-router-dom";
+import { isAuthenticated, getUserRole } from "../utils/auth";
 
 const Footer = () => {
   const location = useLocation();
+  const isLoggedIn = isAuthenticated();
+  const userRole = getUserRole();
 
+  // Don't render footer in admin, organizer, or user dashboards
   if (
     location.pathname.startsWith("/admindb") ||
-    location.pathname.startsWith("/orgdb")
+    location.pathname.startsWith("/orgdb") ||
+    location.pathname.startsWith("/userdb")
   ) {
     return null;
   }
 
   return (
-    <div className="bg-gradient-to-r from-gray-800 to-gray-900 text-gray-200">
-      <footer className="max-w-7xl mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+    <div className="bg-gradient-to-r from-gray-800 to-gray-900 text-gray-300">
+      <footer className="max-w-7xl mx-auto px-6 py-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8">
           {/* Company Info */}
           <div className="space-y-4">
-            <h3 className="text-xl font-semibold">About Company</h3>
-            <p className="text-gray-400">We create memorable events and experiences that bring people together.</p>
+            <h3 className="text-xl font-semibold text-white">About Us</h3>
+            <p className="text-gray-400">
+              We create memorable events and experiences that bring people together.
+            </p>
             <div className="flex space-x-4">
               <a href="#" className="hover:text-blue-400 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" className="fill-current">
@@ -39,45 +46,41 @@ const Footer = () => {
 
           {/* Quick Links */}
           <div className="space-y-4">
-            <h3 className="text-xl font-semibold">Quick Links</h3>
+            <h3 className="text-xl font-semibold text-white">Quick Links</h3>
             <ul className="space-y-2">
-              <li><Link to="/about" className="hover:text-blue-400 transition-colors">About Us</Link></li>
-              <li><Link to="/contact" className="hover:text-blue-400 transition-colors">Contact</Link></li>
-              <li><Link to="/events" className="hover:text-blue-400 transition-colors">Events</Link></li>
-              <li><Link to="/blog" className="hover:text-blue-400 transition-colors">Blog</Link></li>
+              <li>
+                <Link to="/about" className="hover:text-blue-400 transition-colors">
+                  About Us
+                </Link>
+              </li>
+              <li>
+                <Link to="/contact" className="hover:text-blue-400 transition-colors">
+                  Contact
+                </Link>
+              </li>
+              <li>
+                <Link to="/event" className="hover:text-blue-400 transition-colors">
+                  Events
+                </Link>
+              </li>
             </ul>
           </div>
 
           {/* Contact Info */}
           <div className="space-y-4">
-            <h3 className="text-xl font-semibold">Contact Info</h3>
+            <h3 className="text-xl font-semibold text-white">Contact</h3>
             <ul className="space-y-2 text-gray-400">
               <li>123 Event Street</li>
-              <li>New York, NY 10001</li>
-              <li>Phone: (555) 123-4567</li>
-              <li>Email: info@eventcompany.com</li>
+              <li>Kathmandu, Nepal 4001</li>
+              <li>Phone: +977-9700000000</li>
+              <li>Email: eventa2025@gmail.com</li>
             </ul>
-          </div>
-
-          {/* Newsletter */}
-          <div className="space-y-4">
-            <h3 className="text-xl font-semibold">Newsletter</h3>
-            <p className="text-gray-400">Subscribe to our newsletter for updates</p>
-            <div className="flex flex-col space-y-2">
-              <input 
-                type="email" 
-                placeholder="Enter your email" 
-                className="px-4 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
-                Subscribe
-              </button>
-            </div>
           </div>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-gray-700">
-          <p className="text-center text-gray-400">
+        {/* Footer Bottom */}
+        <div className="mt-12 pt-6 border-t border-gray-700 text-center">
+          <p className="text-gray-400">
             Copyright © {new Date().getFullYear()} - All rights reserved
           </p>
         </div>
