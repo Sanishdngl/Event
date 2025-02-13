@@ -1,29 +1,69 @@
 import EventRequest from '../model/eventrequest.schema.js';
-// import User from '../models/User.js';
+import Notification from '../model/notification.schema.js';
+import Role from '../model/role.schema.js';
+import { wsManager } from '../webSocket.js';
 import mongoose from 'mongoose';
-import jwt from 'jsonwebtoken';
+
+const createResponse = (success, message, data = null, error = null) => ({
+  success,
+  message,
+  data,
+  error
+});
 
 // Create Event Request
 export const createEventRequest = async (req, res) => {
-  const { eventType,contact, venue, budget, date, description,status } = req.body;
-  const userId = req.user.id;  // Assume you're using JWT for authentication
-
   try {
-    const newRequest = new EventRequest({
-      userId,
-      eventType,
-      venue,
-      budget,
-      date,
-      description,
-      status,
+    // 1. Create Event Request
+    const eventRequest = await new EventRequest({
+      ...req.body,
+      userId: req.user._id,
+      status: 'open'
+    }).save();
+
+    // 2. Create Notification
+    const organizerRole = await Role.findOne({ role_Name: 'Organizer' }).lean();
+    
+    const notification = await Notification.create({
+      message: `New ${req.body.eventType} request`,
+      type: 'new_event_request',
+      eventRequestId: eventRequest._id,
+      forRole: organizerRole._id,
+      status: 'unread',
+      metadata: {
+        eventRequest: {
+          type: req.body.eventType,
+          venue: req.body.venue,
+          date: req.body.date,
+          budget: req.body.budget
+        }
+      }
     });
 
-    await newRequest.save();
-    res.status(201).json({ message: 'Event request submitted successfully' });
+    // 3. Broadcast to Organizers
+    wsManager.broadcastToRole('Organizer', {
+      type: 'notification',
+      action: 'new_event_request',
+      payload: {
+        notification: notification.toObject(),
+        eventRequest: eventRequest.toObject()
+      }
+    });
+
+    res.status(201).json(createResponse(
+      true,
+      'Event request created successfully',
+      { eventRequest, notification }
+    ));
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error creating event request' });
+    console.error('Error creating event request:', error);
+    res.status(500).json(createResponse(
+      false,
+      'Error creating event request',
+      null,
+      error.message
+    ));
   }
 };
 
@@ -47,7 +87,6 @@ export const getEventRequestsForOrganizer = async (req, res) => {
   }
 };
 
-// Organizer Expresses Interest in Event Request
 export const respondToEventRequest = async (req, res) => {
   const { message, status, proposedBudget } = req.body;
   const eventrequestId = req.params.id;
@@ -208,47 +247,78 @@ export const getAcceptedOrganizers = async (req, res) => {
 
 export const acceptEventRequest = async (req, res) => {
   const { eventId } = req.params;
-  const { proposedBudget } = req.body; // Event ID from the request URL
-  const organizerId = req.user.id; // Organizer ID from the authenticated user
+  const { proposedBudget } = req.body;
+  const organizerId = req.user.id;
 
   try {
-    // Fetch the event request from the database
     const eventRequest = await EventRequest.findById(eventId);
-
-    // Check if the event request exists
     if (!eventRequest) {
       return res.status(404).json({ message: 'Event request not found' });
     }
 
-    // Check if the organizer is already in the interestedOrganizers array
     let organizerIndex = eventRequest.interestedOrganizers.findIndex(
       (org) => org.organizerId.toString() === organizerId.toString()
     );
 
-    // If the organizer is not already in the array, add them
     if (organizerIndex === -1) {
       eventRequest.interestedOrganizers.push({
-
-        organizerId, // Add organizer ID
-        status: 'accepted', // Set status to accepted
-        message: 'I am interested to organize this event', // Optional message
-        proposedBudget: proposedBudget || null, // Save the proposed budget, if provided
+        organizerId,
+        status: 'accepted',
+        message: 'I am interested to organize this event',
+        proposedBudget: proposedBudget || null,
       });
     } else {
-      // If the organizer is already in the array, update their status
       eventRequest.interestedOrganizers[organizerIndex].status = 'accepted';
       if (proposedBudget) {
         eventRequest.interestedOrganizers[organizerIndex].proposedBudget = proposedBudget;
       }
     }
 
-    // Update the status of the event request to 'deal_done'
-    // eventRequest.status = 'open';
+    await event.save();
 
-    // Save the updated event request to the database
-    await eventRequest.save();
+    // --- Notification Creation (FIXED) ---
+    let notification;
+    try {
+      notification = await Notification.create({
+        message: `An organizer has accepted your ${eventRequest.eventType} request`,
+        type: 'event_request_accepted',
+        eventRequestId: eventRequest._id,
+        userId: eventRequest.userId, // Ensure this field is populated
+        status: 'unread',
+        metadata: {
+          eventRequest: {
+            type: eventRequest.eventType,
+            venue: eventRequest.venue,
+            date: eventRequest.date,
+            organizerName: req.user.fullname,
+            proposedBudget: proposedBudget
+          },
+          organizer: {
+            id: req.user._id,
+            name: req.user.fullname,
+            message: 'I am interested to organize this event'
+          }
+        }
+      });
+      console.log('Notification created:', notification);
+
+      // Broadcast INSIDE the try block
+      wsManager.broadcastToUser(eventRequest.userId.toString(), {
+        type: 'notification',
+        action: 'event_request_accepted',
+        payload: {
+          notification: notification.toObject(),
+          eventRequest: eventRequest.toObject()
+        }
+      });
+
+    } catch (notificationError) {
+      console.error('Notification creation failed:', notificationError);
+      // Do not block the response, but log the error
+    }
 
     res.status(200).json({ message: 'Event request accepted successfully' });
+
   } catch (error) {
     console.error('Error in acceptEventRequest:', error);
     res.status(500).json({ message: 'Internal Server Error' });
@@ -335,35 +405,3 @@ export const selectOrganizer = async (req, res) => {
   }
 };
 
-
-// export const editOrganizerBudget = async (req, res) => {
-//   const { proposedBudget } = req.body; // The new proposed budget
-//   const eventrequestId = req.params.id; // Event request ID
-//   const organizerId = req.user._id; // Assuming the organizer ID is in the user's JWT payload
-
-//   try {
-//     // Find the event request
-//     const request = await EventRequest.findById(eventrequestId);
-//     if (!request) {
-//       return res.status(404).json({ message: 'Event request not found' });
-//     }
-
-//     // Find the organizer in the interestedOrganizers array
-//     const organizerIndex = request.interestedOrganizers.findIndex(
-//       (org) => org.organizerId.toString() === organizerId.toString()
-//     );
-
-//     if (organizerIndex === -1) {
-//       return res.status(404).json({ message: 'Organizer not found in the event request' });
-//     }
-
-//     // Update the proposed budget for the organizer
-//     request.interestedOrganizers[organizerIndex].proposedBudget = proposedBudget;
-
-//     await request.save();
-//     res.status(200).json({ message: 'Proposed budget updated successfully!' });
-//   } catch (error) {
-//     console.error('Error updating proposed budget:', error);
-//     res.status(500).json({ message: 'Error updating proposed budget', error: error.message });
-//   }
-// };

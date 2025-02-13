@@ -21,7 +21,7 @@ class WebSocketManager {
 
       try {
         const client = await this.authenticateConnection(ws, req, connectionId);
-        if (!client) return; // Authentication failed
+        if (!client) return; 
 
         this.setupClientConnection(ws, client, connectionId);
       } catch (error) {
@@ -48,7 +48,6 @@ class WebSocketManager {
       
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       
-      // Support both token formats
       const userId = decoded.user?.id || decoded.userId || decoded.sub;
       
       if (!userId) {
@@ -114,7 +113,6 @@ class WebSocketManager {
     this.clients.set(ws, { ...client, ws });
     console.log(`WebSocket connected - ConnectionID: ${connectionId}, UserID: ${client.userId}, Role: ${client.roleName}`);
 
-    // Setup ping with timeout check
     const pingInterval = setInterval(() => {
       if (ws.readyState !== ws.OPEN) {
         this.cleanupClient(ws, connectionId);
@@ -124,13 +122,12 @@ class WebSocketManager {
       let pongReceived = false;
       ws.ping(() => { pongReceived = true; });
 
-      // Set timeout to check if pong was received
       setTimeout(() => {
         if (!pongReceived && ws.readyState === ws.OPEN) {
           console.log(`No pong received for ${connectionId}, closing connection`);
           this.cleanupClient(ws, connectionId);
         }
-      }, 5000); // 5 second timeout for pong
+      }, 5000); 
     }, 30000);
 
     this.pingIntervals.set(ws, pingInterval);
@@ -192,6 +189,9 @@ class WebSocketManager {
           break;
         case 'subscribeUnreadCount':
           await this.handleUnreadCountSubscription(client);
+          break;
+        case 'notification':
+          await this.handleNotification(client, message);
           break;
         case 'ping':
           this.sendToClient(ws, { type: 'pong' });
@@ -275,7 +275,7 @@ class WebSocketManager {
   
       if (notification) {
         this.broadcastToUser(client.userId, {
-          type: 'notification_deleted',
+          type: 'notificationDeleted',
           payload: { 
             notificationId 
           }
@@ -329,6 +329,68 @@ class WebSocketManager {
     }
   }
 
+  async handleNotification(client, message) {
+    try {
+      const { action, payload } = message;
+      
+      if (!payload || !payload.notification) {
+        throw new Error('Invalid notification payload');
+      }
+  
+      const notificationData = {
+        type: 'notification',
+        action,
+        payload: {
+          ...payload,
+          timestamp: new Date().toISOString(),
+          correlationId: uuidv4()
+        }
+      };
+
+      switch (action) {
+        case 'event_request':
+          if (payload.notification.forRole === 'Admin') {
+            await this.broadcastToRole('Admin', notificationData);
+          }
+          break;
+
+        case 'event_response':
+          if (payload.notification.userId) {
+            await this.broadcastToUser(payload.notification.userId, notificationData);
+          }
+          break;
+
+        case 'new_event_request':
+          if (payload.notification.forRole) {
+            await this.broadcastToRole(payload.notification.forRole, notificationData);
+          }
+          break;
+
+        case 'event_request_update':
+          if (payload.notification.userId) {
+            await this.broadcastToUser(payload.notification.userId, notificationData);
+          }
+          break;
+
+        case 'event_request_accepted':
+        if (payload.notification.userId) {
+          await this.broadcastToUser(payload.notification.userId, notificationData);
+        }
+        break;
+
+        default:
+          this.broadcastToUser(client.userId, {
+            type: 'notification',
+            action: action || 'received',
+            payload
+          });
+      }
+    } catch (error) {
+      console.error('Error handling notification:', error);
+      throw error;
+    }
+  }
+
   sendToClient(ws, data) {
     if (ws.readyState === ws.OPEN) {
       try {
@@ -339,21 +401,11 @@ class WebSocketManager {
     }
   }
 
-  // Make sure broadcastToUser uses consistent ID comparison
   broadcastToUser(userId, data) {
     const disconnectedClients = [];
-    const standardizedData = {
-      type: data.type,
-      action: data.action || null,
-      payload: {
-        ...data.payload,
-        timestamp: new Date().toISOString(),
-        correlationId: uuidv4()
-      }
-    };
+    const standardizedData = this.createStandardizedMessage(data);
 
     this.clients.forEach((client, ws) => {
-      // Ensure both IDs are strings for comparison
       if (client.userId === userId.toString()) {
         if (ws.readyState === ws.OPEN) {
           this.sendToClient(ws, standardizedData);
@@ -365,18 +417,9 @@ class WebSocketManager {
     disconnectedClients.forEach(ws => this.cleanupClient(ws));
   }
 
-  // Make sure broadcastToRole uses consistent ID comparison
   broadcastToRole(roleIdentifier, data) {
     const disconnectedClients = [];
-    const standardizedData = {
-      type: data.type,
-      action: data.action || null,
-      payload: {
-        ...data.payload,
-        timestamp: new Date().toISOString(),
-        correlationId: uuidv4()
-      }
-    };
+    const standardizedData = this.createStandardizedMessage(data);
 
     this.clients.forEach((client, ws) => {
       const matchesRole = typeof roleIdentifier === 'string' 
@@ -392,6 +435,18 @@ class WebSocketManager {
       }
     });
     disconnectedClients.forEach(ws => this.cleanupClient(ws));
+  }
+
+  createStandardizedMessage(data) {
+    return {
+      type: data.type,
+      action: data.action || null,
+      payload: {
+        ...data.payload,
+        timestamp: new Date().toISOString(),
+        correlationId: uuidv4()
+      }
+    };
   }
 
   async shutdown() {

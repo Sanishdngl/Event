@@ -10,17 +10,26 @@ const notificationSchema = new mongoose.Schema(
       type: String, 
       required: true,
       enum: ['event_request', 'event_response', 'event_update', 
-             'system_notification', 'profile_update']
+             'system_notification', 'profile_update', 'new_event_request', 'event_request_accepted']
     },
     forRole: { 
-      type: mongoose.Schema.Types.ObjectId,  // Changed from String to ObjectId
-      ref: 'Role',                          // Added reference to Role model
+      type: mongoose.Schema.Types.ObjectId,  
+      ref: 'Role',                          
       required: true
     },
     userId: { 
       type: mongoose.Schema.Types.ObjectId, 
-      ref: 'User', 
-      required: true 
+      ref: 'User',
+      required: function() {
+        return ['event_response', 'profile_update'].includes(this.type);
+      }
+    },
+    eventRequestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'EventRequest',
+      required: function() {
+        return this.type === 'new_event_request';
+      }
     },
     eventId: { 
       type: mongoose.Schema.Types.ObjectId, 
@@ -29,7 +38,7 @@ const notificationSchema = new mongoose.Schema(
         return ['event_request', 'event_response', 'event_update'].includes(this.type);
       }
     },
-    status: {                               // Added status field
+    status: {                               
       type: String,
       enum: ['read', 'unread', 'archived'],
       default: 'unread'

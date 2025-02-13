@@ -23,7 +23,7 @@ router.get('/count', authenticateUser, getUnreadCount);
 router.get('/admin', [authenticateUser, protectAdmin], getAdminNotifications);  // Combined middleware
 
 // POST routes
-router.post('/events', authenticateUser, requestEventNotification);
+router.post('/events', authenticateUser, requestEventNotification); // org to admin
 router.post('/events/:eventId/approve', [authenticateUser, protectAdmin], approveEventNotification);  // Changed from /status to /approve for clarity
 
 // PATCH routes

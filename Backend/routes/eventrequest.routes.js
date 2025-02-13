@@ -15,7 +15,7 @@ import {
 const router = express.Router();
 
 
-router.post('/submitevent', authenticateUser, createEventRequest); // Route to submit an event request
+router.post('/', authenticateUser, createEventRequest); // Route to submit an event request
 router.get('/event-requests', authenticateUser, getEventRequestsForOrganizer); // Route to get all open event requests for organizers
 router.get('/accepted-organizers', authenticateUser, getAcceptedOrganizers); // Route to fetch accepted organizers for a specific event request
 router.get('/event-requests-for-user', authenticateUser, getEventRequestsForUser); // Route to fetch all event requests for the logged-in user
