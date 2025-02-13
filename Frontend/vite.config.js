@@ -23,6 +23,7 @@ export default defineConfig({
   },
   build: {
     sourcemap: true,
+    outDir: 'dist',
     rollupOptions: {
       output: {
         sourcemapExcludeSources: false
