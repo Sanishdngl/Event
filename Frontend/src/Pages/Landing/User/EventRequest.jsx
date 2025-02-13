@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import api from '../../../utils/api';
 import { Alert, AlertDescription } from '../../../components/ui/alert';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
@@ -49,9 +49,8 @@ const EventRequestForm = () => {
   };
 
   const handleChange = (field) => (e) => {
-    const value = e.target?.value ?? e; // Handle both event objects and direct values
+    const value = e.target?.value ?? e;
     setFormData((prev) => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: '' }));
     }
@@ -60,41 +59,40 @@ const EventRequestForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage({ type: '', content: '' });
-
+  
     if (!validateForm()) {
-      setMessage({ type: 'error', content: 'Please fix the errors in the form' });
+      setMessage({ type: 'error', content: 'Please fix form errors' });
       return;
     }
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setMessage({ type: 'error', content: 'Authentication required' });
-      return;
-    }
-
+  
     const requestData = {
-      ...formData,
+      eventType: formData.eventType,
+      venue: formData.venue,
+      date: formData.date,
       budget: parseFloat(formData.budget),
-      status: 'open',
+      description: formData.description
     };
-
+  
     setLoading(true);
+    
     try {
-      const response = await axios.post(
-        'http://localhost:4001/api/v1/eventrequest/submitevent',
-        requestData,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+      const response = await api.safePost(
+        '/eventrequest', // Updated endpoint
+        requestData
       );
-      setMessage({ type: 'success', content: 'Request submitted successfully!' });
-      setFormData(INITIAL_FORM_STATE);
+  
+      if (response.data.success) {
+        setMessage({ 
+          type: 'success', 
+          content: 'Request submitted successfully!' 
+        });
+        setFormData(INITIAL_FORM_STATE);
+      }
     } catch (err) {
       setMessage({
         type: 'error',
-        content: err.response?.data?.message || 'Failed to submit request',
+        content: err.response?.data?.message || 'Failed to submit request'
       });
-      console.error('Error submitting event request:', err);
     } finally {
       setLoading(false);
     }
@@ -135,7 +133,7 @@ const EventRequestForm = () => {
               type="text"
               value={formData.venue}
               onChange={handleChange('venue')}
-              placeholder="Enter venue"
+              placeholder="Enter Your Destination"
               className={errors.venue ? 'border-red-500' : ''}
             />
             {errors.venue && (

@@ -68,7 +68,7 @@ const EventsManagement = ({ isDarkMode }) => {
       if (eventResponse?.data?.success) {
         let persistentNotificationResponse;
         try {
-          persistentNotificationResponse = await api.post('/notifications/events', notificationData);
+          persistentNotificationResponse = await api.post(`/notifications/events/${eventId}/approve`, notificationData);
         } catch (notificationError) {
           console.warn('Failed to create persistent notification:', notificationError);
         }

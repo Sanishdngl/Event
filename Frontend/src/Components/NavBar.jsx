@@ -62,14 +62,10 @@ const NavBar = () => {
   }, []);
 
   useEffect(() => {
-    // Add WebSocket listener for notifications
     const notificationHandler = (data) => {
       console.log('Received notification response:', data);
     };
     
-    websocketManager.on('notification', notificationHandler);
-  
-    // Cleanup on unmount
     return () => {
       websocketManager.off('notification', notificationHandler);
     };
@@ -85,7 +81,6 @@ const NavBar = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isProfileOpen]);
 
-  // Add connection monitoring
   useEffect(() => {
     const handleOnline = () => {
       setIsConnected(true);
@@ -144,7 +139,6 @@ const NavBar = () => {
     return dashboardPaths.some(path => location.pathname.startsWith(path));
   };
 
-  // Dashboard-specific navbar with fixed sidebar
   const renderDashboardNavbar = () => {
     return (
       <div 
@@ -219,9 +213,7 @@ const NavBar = () => {
                       <Bell className={`w-6 h-6 ${themeClasses.text}`} />
                       {unreadCount > 0 && (
                         <span 
-                          className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center transform transition-all duration-300 animate-bounce"
-                          key={unreadCount}
-                        >
+                          className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center transform transition-all duration-300 animate-bounce">
                           {unreadCount}
                         </span>
                       )}
@@ -319,7 +311,6 @@ const NavBar = () => {
     );
   };
 
-  // Regular navbar for non-dashboard routes
   const renderRegularNavbar = () => {
     return (
       <div className={`${themeClasses.nav} w-full`}>
@@ -388,9 +379,7 @@ const NavBar = () => {
                       <Bell className={`w-6 h-6 ${themeClasses.text}`} />
                       {unreadCount > 0 && (
                         <span 
-                          className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center transform transition-all duration-300 animate-bounce"
-                          key={unreadCount}
-                        >
+                          className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center transform transition-all duration-300 animate-bounce">
                           {unreadCount}
                         </span>
                       )}

@@ -1,4 +1,3 @@
-// websocketManager.js
 import api from './api';
 
 class WebSocketManager {
@@ -79,7 +78,7 @@ class WebSocketManager {
 
         const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:4001/notifications/ws?token=${token}`;
         
-        this.cleanup(); // Clean up any existing connection
+        this.cleanup(); 
         this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
@@ -97,7 +96,6 @@ class WebSocketManager {
         this.ws.onclose = this.handleClose.bind(this);
         this.ws.onerror = this.handleError.bind(this);
 
-        // Set connection timeout
         this.connectionTimeout = setTimeout(() => {
           if (this.ws?.readyState === WebSocket.CONNECTING) {
             this.ws.close();
@@ -120,7 +118,6 @@ class WebSocketManager {
     try {
       const data = JSON.parse(event.data);
       
-      // Handle system messages first
       if (data.type === 'pong') {
         this.lastPongReceived = Date.now();
         return;
@@ -133,37 +130,28 @@ class WebSocketManager {
   
       console.debug('Received WebSocket message:', data);
   
-      // Validate message format
       if (!data.type) {
         console.warn('Received message without type:', data);
         return;
       }
   
-      // Standardized message handling
       const messageHandlers = {
         'notification': this.handleNotification.bind(this),
         'new_notification': this.handleNotification.bind(this),
-        'notificationRead': this.handleNotificationRead.bind(this),
         'allNotificationsRead': this.handleAllNotificationsRead.bind(this),
+        
         'unreadCountUpdate': this.handleGenericMessage.bind(this),
         'notification_deleted': this.handleNotificationDeleted.bind(this),
-        'event_request': this.handleEventRequest.bind(this),
-        'event_response': this.handleEventResponse.bind(this),
+        
         'error': this.handleSystemError.bind(this)
       };
   
-      const handler = messageHandlers[data.type];
-  
-      if (handler) {
-        handler(data);
-      } else {
-        this.handleGenericMessage(data);
-      }
+      const handler = messageHandlers[data.type] || this.handleGenericMessage.bind(this);
+      handler(data);
   
     } catch (error) {
       console.error('Error processing WebSocket message:', error);
-      
-      // Attempt to parse the raw message for debugging
+
       try {
         console.debug('Raw message content:', event.data);
       } catch (e) {
@@ -182,14 +170,10 @@ class WebSocketManager {
       action: data.action || 'received',
       timestamp: data.timestamp || new Date().toISOString()
     };
-  
-    const hasListeners = this.listeners.has('notification');
-    if (!hasListeners) {
-      console.warn('No listeners registered for notifications');
-      return;
+
+    if (this.listeners.has('notification')) {
+      this.notifyListeners('notification', payload);
     }
-  
-    this.notifyListeners('notification', payload);
   }
 
   handleEventRequest(data) {
@@ -198,13 +182,6 @@ class WebSocketManager {
       type: 'event_request',
       timestamp: data.timestamp || new Date().toISOString()
     };
-  
-    const hasListeners = this.listeners.has('event_request');
-    if (!hasListeners) {
-      console.warn('No listeners registered for event requests');
-      return;
-    }
-  
     this.notifyListeners('event_request', payload);
   }
 
@@ -214,13 +191,6 @@ class WebSocketManager {
       type: 'event_response',
       timestamp: data.timestamp || new Date().toISOString()
     };
-  
-    const hasListeners = this.listeners.has('event_response');
-    if (!hasListeners) {
-      console.warn('No listeners registered for event responses');
-      return;
-    }
-  
     this.notifyListeners('event_response', payload);
   }
 
@@ -277,7 +247,6 @@ class WebSocketManager {
     
     console.log('WebSocket closed:', event.code, event.reason);
 
-    // Handle authentication errors
     if (event.code >= 4001 && event.code <= 4005) {
       this.notifyListeners('error', `Authentication error: ${event.reason}`);
       this.userDetails = null;
@@ -287,7 +256,6 @@ class WebSocketManager {
 
     this.notifyListeners('disconnected', false);
     
-    // Attempt reconnection if previously authenticated
     if (this.authenticated) {
       this.handleReconnection();
     }
@@ -383,7 +351,6 @@ class WebSocketManager {
     this.isConnecting = false;
   }
 
-  // Event listener methods
   on(eventType, callback) {
     if (!this.listeners.has(eventType)) {
       this.listeners.set(eventType, new Set());
@@ -428,7 +395,6 @@ class WebSocketManager {
 
   addToMessageQueue(type, payload) {
     if (this.messageQueue.length >= this.MAX_QUEUE_SIZE) {
-      // Keep only important messages
       this.messageQueue = this.messageQueue
         .filter(msg => ['ping', 'markAsRead', 'notification'].some(key => msg.type.includes(key)))
         .slice(-this.MAX_QUEUE_SIZE/2);

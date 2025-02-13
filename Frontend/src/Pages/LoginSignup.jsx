@@ -372,13 +372,6 @@ const handleSignup = async () => {
               </button>
             </form>
 
-            {activeTab === 'login' && (
-              <div className="mt-6 text-center">
-                <a href="#" className={`text-purple-600 hover:underline ${isDarkMode ? 'text-purple-400' : ''}`}>
-                  Forgot your password?
-                </a>
-              </div>
-            )}
           </div>
         </div>
         </div>

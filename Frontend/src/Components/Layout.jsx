@@ -5,7 +5,6 @@ import { ThemeProvider } from '../context/ThemeContext';
 import { SidebarProvider, useSidebar } from '../context/SidebarContext';
 import { ErrorBoundary } from '../Components/ErrorBoundary';
 
-// Create a wrapper component to use the context
 const LayoutContent = ({ children }) => {
   const { isSidebarOpen } = useSidebar();
   

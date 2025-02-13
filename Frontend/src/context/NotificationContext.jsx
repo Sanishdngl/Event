@@ -1,4 +1,3 @@
-// context/NotificationContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { notificationService } from '../services/notificationService';
 import websocketManager from '../utils/websocketManager';
@@ -11,6 +10,7 @@ export const NotificationProvider = ({ children }) => {
   const { isAuthenticated } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [filter, setFilter] = useState('all');
   const [unreadCount, setUnreadCount] = useState(0);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -21,104 +21,101 @@ export const NotificationProvider = ({ children }) => {
     limit: 10
   });
   const [wsConnected, setWsConnected] = useState(false);
-  const audioNotification = new Audio(notificationSound);
+  const [audioNotification, setAudioNotification] = useState(null);
 
-  // WebSocket connection and event handlers
+  useEffect(() => {
+    if (isAuthenticated) {
+      const audio = new Audio(notificationSound);
+      setAudioNotification(audio);
+    }
+  }, [isAuthenticated]);
+
   useEffect(() => {
     let reconnectTimeout;
     
     const handleConnectionChange = (connected) => {
       setWsConnected(connected);
-      if (connected) {
-        // Clear any existing reconnect timeout
-        if (reconnectTimeout) {
-          clearTimeout(reconnectTimeout);
-          reconnectTimeout = null;
-        }
+      if (connected && reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
       }
     };
 
     if (isAuthenticated) {
-      const connect = () => {
-        websocketManager.connect();
+      const connect = () => websocketManager.connect();
+
+      
+      const handleNotification = (payload) => {
+        const notification = payload.notification || payload;
+      
+        if (!notification._id) {
+          notification._id = `temp-${Date.now()}-${Math.random()}`;
+        }
+      
+        if (filter !== 'all' && notification.type !== filter) return;
+      
+        if (audioNotification) {
+          audioNotification.play().catch(() => {});
+        }
+      
+        setNotifications(prev => {
+          const exists = prev.some(n => n._id === notification._id);
+          return exists ? prev : [notification, ...prev];
+        });
+      
+        setUnreadCount(prev => prev + 1);
       };
 
-      // Define event handlers
-    const handleNotification = (payload) => {
-      audioNotification.play().catch(error => {
-        console.warn('Error playing notification sound:', error);
-      });
-      setNotifications(prev => [payload, ...prev]);
-      setUnreadCount(prev => prev + 1);
-    };
+      const handleNotificationRead = ({ payload }) => {
+        setNotifications(prev => prev.map(n => 
+          n._id === payload.notificationId ? { ...n, read: true } : n
+        ));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      };
 
-    const handleNotificationRead = (data) => {
-      const notificationId = data.payload?.notificationId;
-      if (notificationId) {
-        setNotifications(prev =>
-          prev.map(notification =>
-            notification._id === notificationId
-              ? { ...notification, read: true }
-              : notification
-          )
-        );
-        updateUnreadCount();
-      }
-    };
+      const handleAllNotificationsRead = () => {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        setUnreadCount(0);
+      };
 
-    const handleAllNotificationsRead = () => {
-      setNotifications(prev =>
-        prev.map(notification => ({ ...notification, read: true }))
-      );
-      setUnreadCount(0);
-    };
+      const handleNotificationDeleted = ({ payload }) => {
+        setNotifications(prev => prev.filter(n => 
+          n._id !== payload.notificationId
+        ));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      };
 
-    const handleNotificationDeleted = (data) => {
-      const notificationId = data.payload?.notificationId;
-      if (notificationId) {
-        setNotifications(prev =>
-          prev.filter(notification => notification._id !== notificationId)
-        );
-        updateUnreadCount();
-      }
-    };
+      const handleWebSocketError = (error) => {
+        console.error('WebSocket error:', error);
+        setError('Connection error. Trying to reconnect...');
+      };
 
-      // Handle WebSocket events
       websocketManager.on('connected', () => handleConnectionChange(true));
       websocketManager.on('disconnected', () => {
         handleConnectionChange(false);
-        // Attempt to reconnect after 5 seconds
         reconnectTimeout = setTimeout(connect, 5000);
       });
-      websocketManager.on('notification', handleNewNotification);
-      websocketManager.on('new_notification', handleNewNotification);
+      websocketManager.on('notification', handleNotification);
       websocketManager.on('notificationRead', handleNotificationRead);
-      websocketManager.on('all_notifications_read', handleAllNotificationsRead);
       websocketManager.on('allNotificationsRead', handleAllNotificationsRead);
       websocketManager.on('notification_deleted', handleNotificationDeleted);
       websocketManager.on('error', handleWebSocketError);
 
-      // Initial connection
       connect();
 
-      // Cleanup
       return () => {
-        if (reconnectTimeout) {
-          clearTimeout(reconnectTimeout);
-        }
+        clearTimeout(reconnectTimeout);
         websocketManager.disconnect();
         websocketManager.off('connected');
         websocketManager.off('disconnected');
-        websocketManager.off('newNotification');
+        websocketManager.off('notification', handleNotification);
         websocketManager.off('notificationRead');
         websocketManager.off('allNotificationsRead');
-        websocketManager.off('notificationDeleted');
+        websocketManager.off('notification_deleted');
         websocketManager.off('error');
       };
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, filter]);
 
-  // Fetch initial notifications and unread count
   useEffect(() => {
     if (isAuthenticated) {
       fetchNotifications();
@@ -126,81 +123,43 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isAuthenticated]);
 
-  const handleWebSocketError = (error) => {
-    console.error('WebSocket error:', error);
-    setError('Connection error. Trying to reconnect...');
-  };
-
   const fetchNotifications = async (page = 1, filter = 'all') => {
-    if (!isAuthenticated) {
-      setError('Please log in to view notifications');
-      return [];
-    }
-  
     try {
       setIsLoading(true);
-      setError(null);
       const response = await notificationService.getNotifications(page, filter);
       
-      if (!response?.data?.notifications || !response?.data?.pagination) {
-        throw new Error('Invalid response format from server');
+      if (response?.data?.notifications && response?.data?.pagination) {
+        setPagination(response.data.pagination);
+        setNotifications(prev => 
+          page === 1 ? response.data.notifications : [...prev, ...response.data.notifications]
+        );
       }
-  
-      const { notifications: newNotifications, pagination: newPagination } = response.data;
-      
-      setPagination(newPagination);
-      
-      if (page === 1) {
-        setNotifications(newNotifications);
-      } else {
-        setNotifications(prev => [...prev, ...newNotifications]);
-      }
-      
-      return newNotifications;
     } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to fetch notifications';
-      setError(errorMessage);
-      console.error('Error fetching notifications:', error);
-      return [];
+      setError(error.message || 'Failed to fetch notifications');
     } finally {
       setIsLoading(false);
     }
   };
 
-
   const updateUnreadCount = async () => {
-    if (!isAuthenticated) return;
     try {
-      setError(null);
       const count = await notificationService.getUnreadCount();
       setUnreadCount(count);
     } catch (error) {
       console.error('Error updating unread count:', error);
-      // Don't set error state here to avoid UI clutter
     }
-  };
-
-  const toggleNotifications = () => {
-    setIsNotificationsOpen(prev => !prev);
   };
 
   const markAsRead = async (notificationId) => {
     try {
       await notificationService.markAsRead(notificationId);
       websocketManager.send('markAsRead', { notificationId });
-      
-      // Optimistically update the UI
-      setNotifications(prev =>
-        prev.map(notification =>
-          notification._id === notificationId
-            ? { ...notification, read: true }
-            : notification
-        )
-      );
-      updateUnreadCount();
+      setNotifications(prev => prev.map(n => 
+        n._id === notificationId ? { ...n, read: true } : n
+      ));
+      setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
-      console.error('Error marking notification as read:', error);
-      // Revert optimistic update if needed
+      console.error('Error marking read:', error);
       await fetchNotifications(pagination.currentPage);
     }
   };
@@ -209,17 +168,11 @@ export const NotificationProvider = ({ children }) => {
     try {
       await notificationService.markAllAsRead();
       websocketManager.send('markAllAsRead');
-      
-      // Optimistically update the UI
-      setNotifications(prev =>
-        prev.map(notification => ({ ...notification, read: true }))
-      );
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
-      // Revert optimistic update if needed
+      console.error('Error marking all read:', error);
       await fetchNotifications(pagination.currentPage);
-      await updateUnreadCount();
     }
   };
 
@@ -227,51 +180,12 @@ export const NotificationProvider = ({ children }) => {
     try {
       await notificationService.deleteNotification(notificationId);
       websocketManager.send('deleteNotification', { notificationId });
-      
-      // Optimistically update the UI
-      setNotifications(prev =>
-        prev.filter(notification => notification._id !== notificationId)
-      );
-      updateUnreadCount();
+      setNotifications(prev => prev.filter(n => n._id !== notificationId));
+      setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error deleting notification:', error);
-      // Revert optimistic update if needed
       await fetchNotifications(pagination.currentPage);
     }
-  };
-
-  // WebSocket event handlers
-  const handleNewNotification = (notification) => {
-    audioNotification.play().catch(error => {
-      console.warn('Error playing notification sound:', error);
-    });
-    setNotifications(prev => [notification, ...prev]);
-    setUnreadCount(prev => prev + 1);
-  };
-
-  const handleNotificationRead = ({ notificationId }) => {
-    setNotifications(prev =>
-      prev.map(notification =>
-        notification._id === notificationId
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
-    updateUnreadCount();
-  };
-
-  const handleAllNotificationsRead = () => {
-    setNotifications(prev =>
-      prev.map(notification => ({ ...notification, read: true }))
-    );
-    setUnreadCount(0);
-  };
-
-  const handleNotificationDeleted = ({ notificationId }) => {
-    setNotifications(prev =>
-      prev.filter(notification => notification._id !== notificationId)
-    );
-    updateUnreadCount();
   };
 
   const value = {
@@ -283,12 +197,14 @@ export const NotificationProvider = ({ children }) => {
     isAuthenticated,
     pagination,
     wsConnected,
-    toggleNotifications,
+    filter,
+    toggleNotifications: () => setIsNotificationsOpen(prev => !prev),
     markAsRead,
     markAllAsRead,
     deleteNotification,
     fetchNotifications,
     clearError: () => setError(null),
+    setFilter,
   };
 
   return (
