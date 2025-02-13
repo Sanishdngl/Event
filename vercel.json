@@ -6,10 +6,11 @@
       "use": "@vercel/node"
     },
     {
-      "src": "package.json",
+      "src": "Frontend/package.json",
       "use": "@vercel/vite",
       "config": {
-        "buildCommand": "npm run build"
+        "distDir": "dist",
+        "buildCommand": "npm install && npm run build"
       }
     }
   ],
@@ -23,12 +24,31 @@
       "dest": "Backend/index.js"
     },
     {
-      "src": "^/assets/(.*)",
-      "dest": "dist/assets/$1"
+      "src": "^/assets/(.*\\.(?:js|css|jpg|jpeg|png|gif|ico|json|webp|avif))$",
+      "dest": "Frontend/dist/assets/$1"
+    },
+    {
+      "src": "^/static/(.*)",
+      "dest": "Frontend/dist/static/$1"
+    },
+    {
+      "src": "^/(admindb|orgdb|userdb)(.*)",
+      "headers": { "Cache-Control": "no-cache" },
+      "dest": "Frontend/dist/index.html"
+    },
+    {
+      "src": "^/(about|contact|event|loginsignup|profile|settings)(.*)",
+      "headers": { "Cache-Control": "no-cache" },
+      "dest": "Frontend/dist/index.html"
+    },
+    {
+      "src": "/(.*\\.[a-z0-9]+)$",
+      "dest": "Frontend/dist/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "dist/index.html"
+      "headers": { "Cache-Control": "no-cache" },
+      "dest": "Frontend/dist/index.html"
     }
   ],
   "env": {
