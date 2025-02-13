@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Card, CardHeader, CardTitle, CardContent } from "../Components/ui/card";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Alert, AlertDescription } from "../components/ui/alert";
+import { Button } from "../Components/ui/button";
+import { Input } from "../Components/ui/input";
+import { Alert, AlertDescription } from "../Components/ui/alert";
 import { Avatar, AvatarImage, AvatarFallback } from "../Components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../Components/ui/tabs";
 import { Camera, Calendar, MapPin, Clock, Edit2, X } from "lucide-react";
