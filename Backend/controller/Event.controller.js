@@ -439,10 +439,10 @@ export const getSimilarEvents = async (req, res) => {
 
 
 export const getEvents = async (req, res) => {
-  const { search, location, category, priceRange, date, status, parentCategory } = req.query;
+  const { search, location, category, priceRange, date, parentCategory } = req.query;
 
   try {
-    const query = {};
+    const query = { status: 'approved' }; 
     
     if (search) {
       query.$or = [
@@ -457,27 +457,19 @@ export const getEvents = async (req, res) => {
 
     // Handle parent category filtering
     if (parentCategory && mongoose.Types.ObjectId.isValid(parentCategory)) {
-      // First, find all child categories of the parent
       const childCategories = await Category.find({ 
         parentCategory: new mongoose.Types.ObjectId(parentCategory) 
       });
       
-      // Create an array of category IDs including parent and all children
       const categoryIds = [
         new mongoose.Types.ObjectId(parentCategory),
         ...childCategories.map(cat => cat._id)
       ];
       
-      // Update query to match any of these categories
       query.category = { $in: categoryIds };
     }
-    // Handle specific category filtering (existing logic)
     else if (category && mongoose.Types.ObjectId.isValid(category)) {
       query.category = new mongoose.Types.ObjectId(category);
-    }
-
-    if (status && ['upcoming', 'ongoing', 'completed', 'cancelled'].includes(status)) {
-      query.status = status;
     }
 
     if (priceRange) {
@@ -506,10 +498,10 @@ export const getEvents = async (req, res) => {
       .populate("attendees", "fullname email")
       .sort({ event_date: 1 });
 
-    // Add category hierarchy information to the response
+    // Add category hierarchy information
     const eventsWithCategoryInfo = events.map(event => {
       const eventObj = event.toObject();
-      if (eventObj.category && eventObj.category.parentCategory) {
+      if (eventObj.category?.parentCategory) {
         eventObj.categoryHierarchy = {
           parent: eventObj.category.parentCategory.categoryName,
           child: eventObj.category.categoryName
