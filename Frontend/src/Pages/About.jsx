@@ -2,11 +2,11 @@ import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, Users, MapPin, Trophy, Check, ArrowRight } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import eventImage from '/src/assets/images/event.webp';
-import communityImage from '/src/assets/images/community.webp';
-import locationImage from '/src/assets/images/location.jpg';
-import premiumImage from '/src/assets/images/premium.jpg';
-import bookingImage from '/src/assets/images/booking.jpg';
+import eventImage from '../assets/images/event.webp';
+import communityImage from '../assets/images/community.webp';
+import locationImage from '../assets/images/location.jpg';
+import premiumImage from '../assets/images/premium.jpg';
+import bookingImage from '../assets/images/booking.jpg';
 
 const About = () => {
   const { isDarkMode } = useTheme();

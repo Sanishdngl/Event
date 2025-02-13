@@ -3,7 +3,7 @@ import { Mail, Phone, MessageSquare, Send, MapPin } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import emailjs from '@emailjs/browser';
 import { motion } from 'framer-motion';
-import ContactImage from '/src/assets/images/ContactImage.avif';
+import ContactImage from '../assets/images/contactimage.avif';
 
 const Contact = () => {
   const { isDarkMode } = useTheme();

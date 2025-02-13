@@ -3,6 +3,7 @@ import Notification from '../model/notification.schema.js';
 import Role from '../model/role.schema.js';
 import { wsManager } from '../webSocket.js';
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 
 const createResponse = (success, message, data = null, error = null) => ({
   success,
@@ -87,6 +88,7 @@ export const getEventRequestsForOrganizer = async (req, res) => {
   }
 };
 
+// Organizer Expresses Interest in Event Request
 export const respondToEventRequest = async (req, res) => {
   const { message, status, proposedBudget } = req.body;
   const eventrequestId = req.params.id;
@@ -133,7 +135,7 @@ export const respondToEventRequest = async (req, res) => {
 };
 
 export const getEventRequestsForUser = async (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];  // "Bearer <token>"
+  const token = req.headers.authorization?.split(' ')[1];
 
   if (!token) {
     return res.status(401).json({ message: "Unauthorized. Token missing." });
@@ -141,48 +143,49 @@ export const getEventRequestsForUser = async (req, res) => {
 
   try {
     const decodedToken = jwt.decode(token);
-    const userId = decodedToken.user.id;
+    // Fix 1: Ensure correct path to user ID in the token
+    const userId = decodedToken.id || decodedToken.user?.id; // Adjust based on your token structure
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ error: "Invalid userId" });
     }
 
-    // Fetch all event requests for the logged-in user
-    const eventRequests = await EventRequest.find({ userId: new mongoose.Types.ObjectId(userId) })
-      .populate("interestedOrganizers.organizerId", "fullname contact message");
+    // Fix 2: Correct population syntax and field names
+    const eventRequests = await EventRequest.find({ userId })
+      .populate({
+        path: "interestedOrganizers.organizerId",
+        select: "fullname contact", // Ensure these fields exist in the User model
+        model: "User" // Explicitly reference the model if needed
+      });
 
     if (!eventRequests || eventRequests.length === 0) {
       return res.status(404).json({ message: "No event requests found for this user" });
     }
 
-    // Process event requests to include all details
-    const detailedEventRequests = eventRequests.map((event) => {
-      const organizers = event.interestedOrganizers.map((org) => ({
-        organizerId: org.organizerId?._id,
+    // Fix 3: Correct data mapping
+    const detailedEventRequests = eventRequests.map((event) => ({
+      eventId: event._id,
+      eventType: event.eventType,
+      venue: event.venue,
+      budget: event.budget,
+      date: event.date,
+      description: event.description,
+      status: event.status,
+      organizers: event.interestedOrganizers.map((org) => ({
+        organizerId: org.organizerId?._id, // Access populated organizer
         fullname: org.organizerId?.fullname,
         contact: org.organizerId?.contact,
-        message: org.message,
+        message: org.message, // From EventRequest subdocument
         status: org.status,
         responseDate: org.responseDate,
         proposedBudget: org.proposedBudget,
-      }));
-
-      return {
-        eventId: event._id,
-        eventType: event.eventType,
-        venue: event.venue,
-        budget: event.budget,
-        date: event.date,
-        description: event.description,
-        status: event.status,
-        organizers,
-      };
-    });
+      })),
+    }));
 
     res.json({ eventRequests: detailedEventRequests });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("Error in getEventRequestsForUser:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
 
@@ -247,78 +250,47 @@ export const getAcceptedOrganizers = async (req, res) => {
 
 export const acceptEventRequest = async (req, res) => {
   const { eventId } = req.params;
-  const { proposedBudget } = req.body;
-  const organizerId = req.user.id;
+  const { proposedBudget } = req.body; // Event ID from the request URL
+  const organizerId = req.user.id; // Organizer ID from the authenticated user
 
   try {
+    // Fetch the event request from the database
     const eventRequest = await EventRequest.findById(eventId);
+
+    // Check if the event request exists
     if (!eventRequest) {
       return res.status(404).json({ message: 'Event request not found' });
     }
 
+    // Check if the organizer is already in the interestedOrganizers array
     let organizerIndex = eventRequest.interestedOrganizers.findIndex(
       (org) => org.organizerId.toString() === organizerId.toString()
     );
 
+    // If the organizer is not already in the array, add them
     if (organizerIndex === -1) {
       eventRequest.interestedOrganizers.push({
-        organizerId,
-        status: 'accepted',
-        message: 'I am interested to organize this event',
-        proposedBudget: proposedBudget || null,
+
+        organizerId, // Add organizer ID
+        status: 'accepted', // Set status to accepted
+        message: 'I am interested to organize this event', // Optional message
+        proposedBudget: proposedBudget || null, // Save the proposed budget, if provided
       });
     } else {
+      // If the organizer is already in the array, update their status
       eventRequest.interestedOrganizers[organizerIndex].status = 'accepted';
       if (proposedBudget) {
         eventRequest.interestedOrganizers[organizerIndex].proposedBudget = proposedBudget;
       }
     }
 
-    await event.save();
+    // Update the status of the event request to 'deal_done'
+    // eventRequest.status = 'open';
 
-    // --- Notification Creation (FIXED) ---
-    let notification;
-    try {
-      notification = await Notification.create({
-        message: `An organizer has accepted your ${eventRequest.eventType} request`,
-        type: 'event_request_accepted',
-        eventRequestId: eventRequest._id,
-        userId: eventRequest.userId, // Ensure this field is populated
-        status: 'unread',
-        metadata: {
-          eventRequest: {
-            type: eventRequest.eventType,
-            venue: eventRequest.venue,
-            date: eventRequest.date,
-            organizerName: req.user.fullname,
-            proposedBudget: proposedBudget
-          },
-          organizer: {
-            id: req.user._id,
-            name: req.user.fullname,
-            message: 'I am interested to organize this event'
-          }
-        }
-      });
-      console.log('Notification created:', notification);
-
-      // Broadcast INSIDE the try block
-      wsManager.broadcastToUser(eventRequest.userId.toString(), {
-        type: 'notification',
-        action: 'event_request_accepted',
-        payload: {
-          notification: notification.toObject(),
-          eventRequest: eventRequest.toObject()
-        }
-      });
-
-    } catch (notificationError) {
-      console.error('Notification creation failed:', notificationError);
-      // Do not block the response, but log the error
-    }
+    // Save the updated event request to the database
+    await eventRequest.save();
 
     res.status(200).json({ message: 'Event request accepted successfully' });
-
   } catch (error) {
     console.error('Error in acceptEventRequest:', error);
     res.status(500).json({ message: 'Internal Server Error' });

@@ -1,22 +1,21 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig(({ command }) => ({
+export default defineConfig({
   plugins: [react()],
-  base: '/',
   server: {
     fs: {
       strict: false
     },
     proxy: {
       '/api': {
-        target: command === 'serve' ? 'http://localhost:4001' : '/api',
+        target: 'http://localhost:4001',
         changeOrigin: true,
         secure: false,
         timeout: 30000
       },
       '/uploads': { 
-        target: command === 'serve' ? 'http://localhost:4001' : '/uploads',
+        target: 'http://localhost:4001',
         changeOrigin: true,
         secure: false
       }
@@ -24,14 +23,10 @@ export default defineConfig(({ command }) => ({
   },
   build: {
     sourcemap: true,
-    outDir: 'dist',
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui-vendor': ['framer-motion', 'recharts']
-        }
+        sourcemapExcludeSources: false
       }
     }
   }
-}))
+})

@@ -2,14 +2,16 @@ import React, { useEffect } from 'react';
 import { Calendar, Users, MapPin, Trophy, Star, ArrowRight } from 'lucide-react';
 import { motion } from "framer-motion";
 import { useTheme } from '../context/ThemeContext';
-import eventImage from '/src/assets/images/event.webp';
-import communityImage from '/src/assets/images/community.webp';
-import locationImage from '/src/assets/images/location.jpg';
-import premiumImage from '/src/assets/images/premium.jpg';
-import bookingImage from '/src/assets/images/booking.jpg';
-import Man1 from '/src/assets/images/Man1.jpg';
-import Man2 from '/src/assets/images/Man2.jpg';
-import Woman from '/src/assets/images/Woman.jpg';
+import eventImage from '../assets/images/event.webp';
+import communityImage from '../assets/images/community.webp';
+import locationImage from '../assets/images/location.jpg';
+import premiumImage from '../assets/images/premium.jpg';
+import bookingImage from '../assets/images/booking.jpg';
+import Man1 from '../assets/images/man1.jpg';
+import Man2 from '../assets/images/man2.jpg';
+import Woman from '../assets/images/woman.jpg';
+import eventAOfficeImage from '../assets/images/eventAoffice.webp';
+import ceoImage from '../assets/images/ceo.png';
 
 const Home = () => {
   const { isDarkMode } = useTheme();
@@ -144,7 +146,7 @@ const Home = () => {
           {/* Image Section */}
           <div className="flex-1 flex items-center justify-center p-6">
             <img
-              src="/src/assets/images/eventAoffice.webp"
+              src={eventAOfficeImage}
               alt="eventA Office"
               className="rounded-xl shadow-lg w-full max-w-md object-cover"
             />
@@ -170,7 +172,7 @@ const Home = () => {
                 transition={{ repeat: Infinity, duration: 2 }}
               >
                 <img 
-                  src="/src/assets/images/CEO.png" 
+                  src={ceoImage}  
                   alt="Abishek Bhatta" 
                   className="w-full h-full object-cover rounded-full"
                 />
